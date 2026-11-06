@@ -1,0 +1,72 @@
+name: Sync upstream pokebw2
+
+on:
+  schedule:
+    # UTC 00:17, 06:17, 12:17, 18:17 (Singapore 08:17, 14:17, 20:17, 02:17)
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pokebw2-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == '969981/pokebw2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main with complete history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch upstream main and current local main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/fuddlesworth/pokebw2.git
+          git fetch --no-tags upstream +refs/heads/main:refs/remotes/upstream/main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git checkout -B main refs/remotes/origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fast-forward upstream-main mirror (never force push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin refs/remotes/upstream/main:refs/heads/upstream-main
+          echo "Upstream snapshot: `$(git rev-parse --short refs/remotes/upstream/main)`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Merge upstream into main without overwriting local changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse refs/remotes/upstream/main)
+          if git merge-base --is-ancestor "$UPSTREAM" HEAD; then
+            echo "Already contains all upstream commits."
+            echo "main already contains upstream `$UPSTREAM`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! git -c merge.conflictStyle=zdiff3 merge --no-edit --no-ff refs/remotes/upstream/main; then
+            git status --short
+            git merge --abort || true
+            echo "::error::Upstream merge conflicted. No changes pushed to main; resolve manually."
+            echo "Merge conflict between local main and upstream. No main update pushed." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          git push origin HEAD:refs/heads/main
+          AFTER=$(git rev-parse HEAD)
+          {
+            echo "Merged upstream `$UPSTREAM` into main."
+            echo "main: `$BEFORE` -> `$AFTER`"
+          } >> "$GITHUB_STEP_SUMMARY"
