@@ -19,6 +19,11 @@ enum {
     ITEM_WORK_PARAMS,
 };
 
+// ITEM_PARAM_BATTLE_FUNC for items that end a wild battle
+enum {
+    ITEM_BATTLE_FUNC_ESCAPE = 3,
+};
+
 // The effects of an item used on a Pokémon
 typedef struct {
     u8 sleepHeal : 1;
@@ -95,6 +100,16 @@ struct ItemData {
         ItemParams params;
     } work;
 };
+
+// ITEM_PARAM_KIND categories used by the bag
+enum {
+    ITEM_KIND_HELD_EFFECT = 1,
+    ITEM_KIND_BALL = 4,
+    ITEM_KIND_MAIL = 5,
+};
+
+// PML_ItemGetTMBitMask and PML_ItemGetHMID when the item is not a TM/HM or HM
+#define ITEM_TM_HM_NONE 0xff
 
 // PML_ItemGetParam's parameters: the item's fields, then its work's
 enum {
