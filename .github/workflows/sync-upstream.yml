@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           git push origin refs/remotes/upstream/main:refs/heads/upstream-main
-          echo "Upstream snapshot: `$(git rev-parse --short refs/remotes/upstream/main)`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Upstream snapshot: $(git rev-parse --short refs/remotes/upstream/main)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Merge upstream into main without overwriting local changes
         shell: bash
@@ -52,7 +52,7 @@ jobs:
           UPSTREAM=$(git rev-parse refs/remotes/upstream/main)
           if git merge-base --is-ancestor "$UPSTREAM" HEAD; then
             echo "Already contains all upstream commits."
-            echo "main already contains upstream `$UPSTREAM`" >> "$GITHUB_STEP_SUMMARY"
+            echo "main already contains upstream $UPSTREAM" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -67,6 +67,6 @@ jobs:
           git push origin HEAD:refs/heads/main
           AFTER=$(git rev-parse HEAD)
           {
-            echo "Merged upstream `$UPSTREAM` into main."
-            echo "main: `$BEFORE` -> `$AFTER`"
+            echo "Merged upstream $UPSTREAM into main."
+            echo "main: $BEFORE -> $AFTER"
           } >> "$GITHUB_STEP_SUMMARY"
