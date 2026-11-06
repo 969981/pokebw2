@@ -7,6 +7,9 @@ on:
     workflows: ['Sync upstream pokebw2']
     types: [completed]
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/upstream-source-release.yml']
 
 permissions:
   contents: write
