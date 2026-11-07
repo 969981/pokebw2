@@ -21,6 +21,26 @@ typedef struct WifiBattleMatchPartnerCard WifiBattleMatchPartnerCard;
 typedef struct WifiBattleMatchTeamList WifiBattleMatchTeamList;
 typedef struct WifiBattleMatchLinkIcon WifiBattleMatchLinkIcon;
 
+enum {
+    WIFIBATTLEMATCH_CARD_PAGE_REGISTERED = 0,
+    WIFIBATTLEMATCH_CARD_PAGE_UNREGISTERED = 1,
+    WIFIBATTLEMATCH_CARD_PAGE_EMPTY = 2,
+};
+
+enum {
+    WIFIBATTLEMATCH_BG_WIFI_COMPETITION = 0,
+    WIFIBATTLEMATCH_BG_CHAMPIONSHIP = 1,
+    WIFIBATTLEMATCH_BG_RANDOM = 2,
+    WIFIBATTLEMATCH_BG_CARD = 3,
+};
+
+enum {
+    WIFIBATTLEMATCH_PARTNER_CARD_WIFI_COMPETITION = 0,
+    WIFIBATTLEMATCH_PARTNER_CARD_LIVE = 1,
+    WIFIBATTLEMATCH_PARTNER_CARD_RATING = 2,
+    WIFIBATTLEMATCH_PARTNER_CARD_FREE = 3,
+};
+
 // What the digital card is made from, for the Wi-Fi competition and for the live one
 typedef struct {
     // The entry's data, which starts with the player's name
@@ -45,10 +65,10 @@ typedef struct {
     u32 startDate;
     u32 endDate;
     u32 look;
-    u16 unkA0;
-    u16 unkA2;
-    u16 unkA4;
-    u16 unkA6;
+    u16 wins;
+    u16 losses;
+    u16 matchCount;
+    u16 maxBattles;
     // Field 11 of the entry, which picks the card's colors
     u16 variant;
     u8 unkAA[2];

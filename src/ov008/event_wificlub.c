@@ -106,17 +106,6 @@ void EventWifiClub_SetupBattleSelect(EventWifiClub *wk, GameData *gameData, u32 
 void EventWifiClub_SetBattleParty(EventWifiClub *wk, GameData *gameData, u32 unused);
 void EventWifiClub_ResetForLogin(EventWifiClub *wk);
 
-enum {
-    WIFICLUB_BATTLE_SINGLE = 7,
-    WIFICLUB_BATTLE_SINGLE_FLAT,
-    WIFICLUB_BATTLE_DOUBLE,
-    WIFICLUB_BATTLE_DOUBLE_FLAT,
-    WIFICLUB_BATTLE_TRIPLE,
-    WIFICLUB_BATTLE_TRIPLE_FLAT,
-    WIFICLUB_BATTLE_ROTATION,
-    WIFICLUB_BATTLE_ROTATION_FLAT,
-};
-
 static WifiClubMode sWifiClubModes[16] = {
     { 0, STEP_LEAVE },          { 0, STEP_LOGIN },          { 0, STEP_LEAVE },
     { 0, STEP_LEAVE },          { 0, STEP_LEAVE },          { 0, STEP_TVT },
@@ -243,7 +232,7 @@ void EventWifiClub_SetBattleParty(EventWifiClub *wk, GameData *gameData, u32 unu
 void EventWifiClub_ResetForLogin(EventWifiClub *wk) {
     GFL_SndPlayerSetVolumeEx(SND_VOLUME_MAX, SND_PLAYER_MASK_ALL);
     PokeVoice_SetMasterVolume(SND_VOLUME_MAX);
-    wk->login.unk14 = 1;
+    wk->login.mode = WIFILOGIN_MODE_RETRY;
 }
 
 GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *data) {
@@ -295,18 +284,18 @@ GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *d
     case STEP_CLEAR_LOGIN:
         MI_CpuFill8(&wk->login, 0, sizeof(WifiLoginParam));
         *state = STEP_LOGIN;
-        wk->login.unk14 = 0;
+        wk->login.mode = WIFILOGIN_MODE_NORMAL;
         break;
     case STEP_LOGIN:
         wk->login.gameData = GSYS_GetGameData(gsys);
-        wk->login.unk8 = 1;
-        wk->login.unk4 = 0;
-        wk->login.unkC = 10;
+        wk->login.messageStyle = WIFILOGIN_MESSAGE_STYLE_GSYNC;
+        wk->login.displayStyle = WIFILOGIN_DISP_STYLE_PDWACC;
+        wk->login.serviceId = WIFILOGIN_SERVICE_WIFI_CLUB;
         wk->login.keepBgm = 1;
         GFL_SndBGMPlay(SEQ_BGM_WIFI_ACCESS, SND_CHANNEL_MASK_ALL);
         wk->procManager = CreateGameProcManager(HEAPID_GAMEEVENT);
         QueueGameProc(wk->procManager, OVERLAY_WIFILOGIN, &WIFILOGIN_PROC_FUNCTIONS, &wk->login);
-        wk->club->mode = 0;
+        wk->club->mode = WIFICLUB_MODE_LEAVE;
         *state = STEP_LOGIN_WAIT;
         break;
     case STEP_LOGIN_WAIT:
@@ -315,12 +304,12 @@ GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *d
             return GAMEEVENT_CONTINUE;
         }
         FreeGameProcManager(wk->procManager);
-        if (wk->login.result == 1) {
+        if (wk->login.result == WIFILOGIN_RESULT_FAILED) {
             GFL_SndBGMFadeOut(6);
             *state = STEP_LEAVE;
         } else if (!WifiList_CountFriends(GameData_GetWifiList(wk->gameData))) {
             *state = STEP_LOGOUT;
-        } else if (wk->login.result == 0) {
+        } else if (wk->login.result == WIFILOGIN_RESULT_OK) {
             *state = STEP_CLUB;
             GFL_SndBGMFadeOut(6);
         } else {
@@ -330,8 +319,8 @@ GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *d
         break;
     case STEP_LOGOUT:
         wk->logout.gameData = GSYS_GetGameData(gsys);
-        wk->logout.unk8 = 1;
-        wk->logout.unk4 = 0;
+        wk->logout.messageStyle = WIFILOGIN_MESSAGE_STYLE_GSYNC;
+        wk->logout.displayStyle = WIFILOGIN_DISP_STYLE_PDWACC;
         wk->logout.keepBgm = 1;
         wk->logout.wipeFlags = 0;
         wk->logout.unk14 = 0;
@@ -362,8 +351,8 @@ GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *d
         break;
     case STEP_CLUB_RESULT:
         *state = sWifiClubModes[wk->club->mode].nextState;
-        if (wk->club->mode == 1) {
-            wk->login.unk14 = 1;
+        if (wk->club->mode == WIFICLUB_MODE_LOGIN) {
+            wk->login.mode = WIFILOGIN_MODE_RETRY;
             EventWifiClub_ResetForLogin(wk);
         }
         wk->battleMode = sWifiClubModes[wk->club->mode].battleMode;
@@ -380,7 +369,7 @@ GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *d
     case STEP_BATTLE_SELECT_RESULT:
         if (wk->select.result == 1) {
             if (GFL_NetIsInitialized()) {
-                wk->club->unk49 = 0;
+                wk->club->connectionResult = WIFICLUB_CONNECTION_NONE;
                 *state = STEP_CLUB;
             } else {
                 EventWifiClub_ResetForLogin(wk);
@@ -464,7 +453,7 @@ GameEventReturnCode EventWifiClub_Callback(GameEvent *event, u32 *state, void *d
             *state = STEP_EVOLVE;
             break;
         case TRADE_NEXT_NEGOTIATE:
-            wk->club->mode = 1;
+            wk->club->mode = WIFICLUB_MODE_LOGIN;
             *state = STEP_CLUB;
             break;
         default:
@@ -562,11 +551,11 @@ void EventWifiClub_Init(GameEvent *event, GameSystem *gsys, Field *field, BOOL u
     wk->club->buffer = GFL_HeapAllocate(HEAPID_TAIL(HEAPID_GAMEEVENT), 0x20, TRUE, "event_wificlub.c", 684);
     wk->club->gameData = GSYS_GetGameData(wk->gsys);
     wk->club->save = GameData_GetSaveControl(wk->club->gameData);
-    wk->club->unk46 = 1;
-    wk->club->unk49 = 0;
+    wk->club->voiceChatEnabled = 1;
+    wk->club->connectionResult = WIFICLUB_CONNECTION_NONE;
     wk->gameData = wk->club->gameData;
     wk->wifiList = GameData_GetWifiList(wk->gameData);
-    wk->club->mode = 0;
+    wk->club->mode = WIFICLUB_MODE_LEAVE;
     wk->party = PokeParty_Create(HEAPID_TAIL(HEAPID_GAMEEVENT));
     wk->trade.party = wk->party;
     wk->self = wk;
@@ -574,7 +563,7 @@ void EventWifiClub_Init(GameEvent *event, GameSystem *gsys, Field *field, BOOL u
     wk->club->parties[0] = PokeParty_Create(HEAPID_TAIL(HEAPID_USER));
     wk->club->parties[1] = PokeParty_Create(HEAPID_TAIL(HEAPID_USER));
     wk->club->regulation = Regulation_Create(HEAPID_TAIL(HEAPID_USER));
-    wk->club->unk20 = 1;
+    wk->club->launcherChoice = 1;
 }
 
 GameEvent *EventWifiClub_Create(GameSystem *gsys, Field *field, BOOL useTransitions) {
