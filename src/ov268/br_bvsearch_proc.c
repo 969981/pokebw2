@@ -30,6 +30,16 @@
 #include "system/printsys.h"
 #include "system/wordset.h"
 
+// The main display windows: each caption followed by its selected value.
+enum {
+    BR_BVSEARCH_WIN_MODE_CAPTION = 0,
+    BR_BVSEARCH_WIN_MODE_CHOICE = 1,
+    BR_BVSEARCH_WIN_POKEMON_CAPTION = 2,
+    BR_BVSEARCH_WIN_POKEMON_CHOICE = 3,
+    BR_BVSEARCH_WIN_AREA_CAPTION = 4,
+    BR_BVSEARCH_WIN_AREA_CHOICE = 5,
+};
+
 // The pages of the sub screen
 enum {
     BR_BVSEARCH_PAGE_MENU,
@@ -204,7 +214,7 @@ static BOOL BrBvSearch_ProcInit(GameProc *proc, u32 *state, void *param, void *w
     p_param->search.area = BR_NET_VIDEO_SEARCH_AREA_NONE;
     p_param->search.mode = BR_NET_VIDEO_SEARCH_MODE_NONE;
 
-    BrRes_LoadOBJ(p_param->res, 6, p_wk->heapId);
+    BrRes_LoadOBJ(p_param->res, BR_RES_OBJ_CONTROLS_S, p_wk->heapId);
     BrBvSearch_CreateMainDisplay(p_wk, p_param);
     return TRUE;
 }
@@ -215,7 +225,7 @@ static BOOL BrBvSearch_ProcExit(GameProc *proc, u32 *state, void *param, void *w
     int i;
 
     BrBvSearch_DeleteMainDisplay(p_wk, p_param);
-    BrRes_UnloadOBJ(p_param->res, 6);
+    BrRes_UnloadOBJ(p_param->res, BR_RES_OBJ_CONTROLS_S);
     for (i = 0; i < 2; i++) {
         BrBallEff_Exit(p_wk->ballEff[i]);
     }
@@ -345,10 +355,10 @@ static BOOL BrBvSearch_MenuInit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
 
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
-    BrRes_LoadBG(p_param->res, 0x1a, p_wk->heapId);
+    BrRes_LoadBG(p_param->res, BR_RES_BG_BV_SEARCH_MENU, p_wk->heapId);
 
     MI_CpuFill8(&setup, 0, sizeof(ClActorSetup));
-    BrRes_GetObjData(p_param->res, 6, &obj);
+    BrRes_GetObjData(p_param->res, BR_RES_OBJ_CONTROLS_S, &obj);
     for (i = 0; i < BR_BVSEARCH_BTN_MAX; i++) {
         setup.x = sBrBvSearchMenuBtns[i].x;
         setup.y = sBrBvSearchMenuBtns[i].y;
@@ -385,7 +395,7 @@ static BOOL BrBvSearch_MenuExit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
         }
     }
     GFL_BGSysLoadScr(4);
-    BrRes_UnloadBG(p_param->res, 0x1a);
+    BrRes_UnloadBG(p_param->res, BR_RES_BG_BV_SEARCH_MENU);
     return TRUE;
 }
 
@@ -512,7 +522,7 @@ static BOOL BrBvSearch_ModeInit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
 
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
-    BrRes_LoadBG(p_param->res, 0x1b, p_wk->heapId);
+    BrRes_LoadBG(p_param->res, BR_RES_BG_BV_SEARCH_MODE, p_wk->heapId);
 
     p_wk->p_list_data = ListMenuCore_CreateOptionList(BR_NET_VIDEO_SEARCH_MODE_NONE, p_wk->heapId);
     for (i = 0; i < BR_NET_VIDEO_SEARCH_MODE_NONE; i++) {
@@ -527,7 +537,7 @@ static BOOL BrBvSearch_ModeInit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
     p_wk->p_list = BrList_Init(&param, p_wk->heapId);
 
     MI_CpuFill8(&setup, 0, sizeof(ClActorSetup));
-    BrRes_GetObjData(p_param->res, 6, &obj);
+    BrRes_GetObjData(p_param->res, BR_RES_OBJ_CONTROLS_S, &obj);
     for (i = 0; i < 1; i++) {
         setup.x = sBrBvSearchModeBtns[i].x;
         setup.y = sBrBvSearchModeBtns[i].y;
@@ -548,7 +558,7 @@ static BOOL BrBvSearch_ModeExit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
     p_wk->p_list = NULL;
     ListMenuCore_FreeOptionList(p_wk->p_list_data);
     p_wk->p_list_data = NULL;
-    BrRes_UnloadBG(p_param->res, 0x1b);
+    BrRes_UnloadBG(p_param->res, BR_RES_BG_BV_SEARCH_MODE);
     GFL_BGSysLoadScr(4);
     return TRUE;
 }
@@ -644,7 +654,7 @@ static BOOL BrBvSearch_AreaInit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
 
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
-    BrRes_LoadBG(p_param->res, 0x1c, p_wk->heapId);
+    BrRes_LoadBG(p_param->res, BR_RES_BG_BV_SEARCH_AREA, p_wk->heapId);
 
     str = GFL_StrBufCreate(0x80, p_wk->heapId);
     player = GetGameDataPlayerInfo(p_param->gameData);
@@ -672,7 +682,7 @@ static BOOL BrBvSearch_AreaInit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
     p_wk->p_list = BrList_Init(&param, p_wk->heapId);
 
     MI_CpuFill8(&setup, 0, sizeof(ClActorSetup));
-    BrRes_GetObjData(p_param->res, 6, &obj);
+    BrRes_GetObjData(p_param->res, BR_RES_OBJ_CONTROLS_S, &obj);
     for (i = 0; i < 1; i++) {
         setup.x = sBrBvSearchAreaBtns[i].x;
         setup.y = sBrBvSearchAreaBtns[i].y;
@@ -693,7 +703,7 @@ static BOOL BrBvSearch_AreaExit(BrBvSearchWork *p_wk, BrBvSearchProcParam *p_par
     p_wk->p_list = NULL;
     ListMenuCore_FreeOptionList(p_wk->p_list_data);
     p_wk->p_list_data = NULL;
-    BrRes_UnloadBG(p_param->res, 0x1c);
+    BrRes_UnloadBG(p_param->res, BR_RES_BG_BV_SEARCH_AREA);
     GFL_BGSysLoadScr(4);
     return TRUE;
 }
@@ -750,7 +760,7 @@ static void BrBvSearch_CreateMainDisplay(BrBvSearchWork *p_wk, BrBvSearchProcPar
 
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
-    BrRes_LoadBG(p_param->res, 0x19, p_wk->heapId);
+    BrRes_LoadBG(p_param->res, BR_RES_BG_BV_SEARCH_MAIN, p_wk->heapId);
 
     for (i = 0; i < BR_BVSEARCH_MSGWIN_MAX; i++) {
         const BrBvSearchMsgWinData *data = &sBrBvSearchMsgWins[i];
@@ -770,7 +780,7 @@ static void BrBvSearch_DeleteMainDisplay(BrBvSearchWork *p_wk, BrBvSearchProcPar
             p_wk->msgWin[i] = NULL;
         }
     }
-    BrRes_UnloadBG(p_param->res, 0x19);
+    BrRes_UnloadBG(p_param->res, BR_RES_BG_BV_SEARCH_MAIN);
     GFL_BGSysLoadScr(1);
 }
 
@@ -785,23 +795,24 @@ static void BrBvSearch_PrintMainDisplay(BrBvSearchWork *p_wk, BrBvSearchProcPara
     switch (menu) {
     case BR_BVSEARCH_MENU_MODE:
         if (p_param->search.mode != BR_NET_VIDEO_SEARCH_MODE_NONE) {
-            BrMsgWin_Print(p_wk->msgWin[1], msg, 0xcd + p_param->search.mode, font, BR_BVSEARCH_PRINT_COLOR);
+            BrMsgWin_Print(p_wk->msgWin[BR_BVSEARCH_WIN_MODE_CHOICE], msg, 0xcd + p_param->search.mode, font,
+                           BR_BVSEARCH_PRINT_COLOR);
         } else {
-            BrMsgWin_Print(p_wk->msgWin[1], msg, 0x75, font, BR_BVSEARCH_PRINT_COLOR);
+            BrMsgWin_Print(p_wk->msgWin[BR_BVSEARCH_WIN_MODE_CHOICE], msg, 0x75, font, BR_BVSEARCH_PRINT_COLOR);
         }
         break;
     case BR_BVSEARCH_MENU_POKE:
         if (p_param->search.monsno != BR_NET_VIDEO_SEARCH_MONSNO_NONE) {
-            BrMsgWin_Print(p_wk->msgWin[3], g_PMLSpeciesNamesResident, p_param->search.monsno, font,
-                           BR_BVSEARCH_PRINT_COLOR);
+            BrMsgWin_Print(p_wk->msgWin[BR_BVSEARCH_WIN_POKEMON_CHOICE], g_PMLSpeciesNamesResident,
+                           p_param->search.monsno, font, BR_BVSEARCH_PRINT_COLOR);
         } else {
-            BrMsgWin_Print(p_wk->msgWin[3], msg, 0x75, font, BR_BVSEARCH_PRINT_COLOR);
+            BrMsgWin_Print(p_wk->msgWin[BR_BVSEARCH_WIN_POKEMON_CHOICE], msg, 0x75, font, BR_BVSEARCH_PRINT_COLOR);
         }
         break;
     case BR_BVSEARCH_MENU_AREA:
         if (p_param->search.country == BR_NET_VIDEO_SEARCH_AREA_NONE &&
             p_param->search.area == BR_NET_VIDEO_SEARCH_AREA_NONE) {
-            BrMsgWin_Print(p_wk->msgWin[5], msg, 0x75, font, BR_BVSEARCH_PRINT_COLOR);
+            BrMsgWin_Print(p_wk->msgWin[BR_BVSEARCH_WIN_AREA_CHOICE], msg, 0x75, font, BR_BVSEARCH_PRINT_COLOR);
         } else {
             WordSet *wordSet = BrRes_GetWordSet(p_param->res);
             StrBuf *src = GFL_MsgDataLoadStrbufNew(msg, 0x18);
@@ -813,7 +824,7 @@ static void BrBvSearch_PrintMainDisplay(BrBvSearchWork *p_wk, BrBvSearchProcPara
                 loadCountryAreaToStrbuf(wordSet, 0, p_param->search.country, p_param->search.area);
             }
             GFL_WordSetFormatStrbuf(wordSet, str, src);
-            BrMsgWin_PrintBuf(p_wk->msgWin[5], str, font, BR_BVSEARCH_PRINT_COLOR);
+            BrMsgWin_PrintBuf(p_wk->msgWin[BR_BVSEARCH_WIN_AREA_CHOICE], str, font, BR_BVSEARCH_PRINT_COLOR);
             GFL_StrBufFree(src);
             GFL_StrBufFree(str);
         }

@@ -16,6 +16,7 @@
 #include "constants/arc.h"
 #include "constants/sound.h"
 #include "gfl/arc.h"
+#include "gfl/backup_system.h"
 #include "gfl/bg_sys.h"
 #include "gfl/clact.h"
 #include "gfl/msg.h"
@@ -99,6 +100,12 @@ typedef struct {
     u32 msgID;
 } BrRecordMsgWinData;
 
+// Icon position-table rows for the two- and four-Trainer header layouts.
+enum {
+    BR_RECORD_ICON_LAYOUT_TWO_TRAINERS = 0,
+    BR_RECORD_ICON_LAYOUT_FOUR_TRAINERS = 1,
+};
+
 static BOOL BrRecord_ProcInit(GameProc *proc, u32 *state, void *param, void *work);
 static BOOL BrRecord_ProcExit(GameProc *proc, u32 *state, void *param, void *work);
 static BOOL BrRecord_ProcMain(GameProc *proc, u32 *state, void *param, void *work);
@@ -123,7 +130,7 @@ static void BrRecord_CreateText(BrRecordWork *p_wk, BrRecordProcParam *p_param);
 static void BrRecord_DeleteText(BrRecordWork *p_wk, BrRecordProcParam *p_param);
 static void BrRecord_CreateConfirm(BrRecordWork *p_wk, BrRecordProcParam *p_param);
 static void BrRecord_DeleteConfirm(BrRecordWork *p_wk, BrRecordProcParam *p_param);
-static BOOL BrRecord_IsSmallTeamMode(BattleRecHeader *header);
+static BOOL BrRecord_IsMultiMode(BattleRecHeader *header);
 static BOOL BrRecord_IsCounterMode(BattleRecHeader *header);
 static BOOL BrRecord_GetTrgChange(BrRecordWork *p_wk, u32 x, u32 y);
 static BOOL BrRecord_GetTrgPlay(BrRecordWork *p_wk, u32 x, u32 y);
@@ -216,7 +223,7 @@ static BOOL BrRecord_ProcInit(GameProc *proc, u32 *state, void *param, void *wor
         p_wk->header = &outline->data[outline->select].header;
         p_wk->profile = &p_wk->p_param->outline->data[p_wk->p_param->outline->select].profile;
         p_wk->canSave = TRUE;
-        if (*p_wk->p_param->unk3C && p_wk->p_param->isRecovery) {
+        if (*p_wk->p_param->recReadComplete && p_wk->p_param->isRecovery) {
             p_wk->p_param->outline->isSecure[p_wk->p_param->outline->select] = TRUE;
         }
         p_wk->isSecure = p_wk->p_param->outline->isSecure[p_wk->p_param->outline->select];
@@ -244,7 +251,7 @@ static BOOL BrRecord_ProcInit(GameProc *proc, u32 *state, void *param, void *wor
         } else {
             p_wk->header = BattleRec_GetHeader();
             p_wk->profile = getVSPlayerAllocation();
-            p_wk->isSecure = *p_wk->p_param->unk3C;
+            p_wk->isSecure = *p_wk->p_param->recReadComplete;
         }
         p_wk->canSave = TRUE;
         break;
@@ -258,7 +265,7 @@ static BOOL BrRecord_ProcInit(GameProc *proc, u32 *state, void *param, void *wor
         }
     } else if ((p_wk->p_param->mode == BR_RECORD_MODE_OTHER1 || p_wk->p_param->mode == BR_RECORD_MODE_OTHER2 ||
                 p_wk->p_param->mode == BR_RECORD_MODE_OTHER3) &&
-               p_wk->p_param->isRecovery && *p_wk->p_param->unk3C && !p_wk->isSecure) {
+               p_wk->p_param->isRecovery && *p_wk->p_param->recReadComplete && !p_wk->isSecure) {
         // A saved video that has just been watched to its end for the first time is marked
         BrSeq_SetNext(p_wk->seq, BrRecord_SeqSecureSave);
     } else {
@@ -277,7 +284,7 @@ static BOOL BrRecord_ProcExit(GameProc *proc, u32 *state, void *param, void *wor
     BrRecord_DeleteButtons(p_wk, p_param);
     BrRecord_DeleteText(p_wk, p_param);
     BrRecord_DeleteConfirm(p_wk, p_param);
-    p_param->unk4 = p_wk->isSecure;
+    p_param->isSecure = p_wk->isSecure;
 
     GFL_BGSysLoadScr(4);
     GFL_BGSysLoadScr(1);
@@ -423,7 +430,7 @@ static void BrRecord_SeqMain(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs) {
             pos.x = x;
             pos.y = y;
             BrBallEff_Start(p_wk->ballEff[CLACT_SURFACE_SUB], BR_BALL_EFFECT_SPREAD, &pos);
-            p_wk->p_param->result = 0;
+            p_wk->p_param->result = BR_RECORD_RESULT_NONE;
             BrProcSys_Pop(p_wk->p_param->procSys);
             BrSeq_SetNext(p_seqwk, BrRecord_SeqFadeOut);
         }
@@ -443,7 +450,7 @@ static void BrRecord_SeqMain(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs) {
             } else if (!p_wk->isSecure) {
                 BrSeq_SetNext(p_seqwk, BrRecord_SeqConfirmPlay);
             } else {
-                p_wk->p_param->result = 1;
+                p_wk->p_param->result = BR_RECORD_RESULT_PLAY_VIDEO;
                 BrProcSys_Interrupt(p_wk->p_param->procSys);
                 BrSeq_SetNext(p_seqwk, BrRecord_SeqFadeOut);
             }
@@ -537,7 +544,7 @@ static void BrRecord_SeqDownloadOutline(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_a
 
         MI_CpuFill8(&req, 0, sizeof(BrNetRequestParam));
         req.dataNumber = p_wk->p_param->videoNumber;
-        BrNet_StartRequest(p_wk->p_param->net, BR_NET_REQUEST_3, &req);
+        BrNet_StartRequest(p_wk->p_param->net, BR_NET_REQUEST_DOWNLOAD_VIDEO, &req);
         p_wk->cnt = 0;
         *p_seq = SEQ_DOWNLOAD_WAIT;
         break;
@@ -682,7 +689,7 @@ static void BrRecord_SeqDownloadPlay(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs
 
         MI_CpuFill8(&req, 0, sizeof(BrNetRequestParam));
         req.dataNumber = BattleRec_GetHeaderValue(p_wk->header, BATTLE_REC_HEADER_DATA_NUMBER, 0);
-        BrNet_StartRequest(p_wk->p_param->net, BR_NET_REQUEST_3, &req);
+        BrNet_StartRequest(p_wk->p_param->net, BR_NET_REQUEST_DOWNLOAD_VIDEO, &req);
         p_wk->cnt = 0;
         *p_seq = SEQ_DOWNLOAD_WAIT;
         break;
@@ -704,8 +711,8 @@ static void BrRecord_SeqDownloadPlay(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs
             if (BrNet_GetDownloadVideo(p_wk->p_param->net, &video, &value)) {
                 BattleRec_StoreDownloaded((GdsProfile *)video->profile, &video->header, &video->body,
                                           GameData_GetSaveControl(p_wk->p_param->gameData));
-                *p_wk->p_param->unk2C = (s32)value;
-                p_wk->p_param->result = 1;
+                *p_wk->p_param->downloadedVideoNumberLowWord = (s32)value;
+                p_wk->p_param->result = BR_RECORD_RESULT_PLAY_VIDEO;
                 BrProcSys_Interrupt(p_wk->p_param->procSys);
                 *p_seq = SEQ_PLAY_FADEOUT_START;
             } else {
@@ -800,7 +807,7 @@ static void BrRecord_SeqSecureSave(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs) 
     case SEQ_SAVE_MAIN:
         GFL_ASSERT(p_wk->p_param->mode <= BR_RECODE_PROC_OTHER_02);
         if (BattleRecOv_SaveSecureVideo(p_wk->p_param->gameData, p_wk->p_param->mode, &p_wk->saveSeq, &p_wk->saveSeq2,
-                                        p_wk->heapId) == 2) {
+                                        p_wk->heapId) == SAVE_RESULT_OK) {
             BattleRec_DecryptBody();
             p_wk->isSecure = BattleRec_GetHeaderValue(p_wk->header, BATTLE_REC_HEADER_SECURE, 0);
             *p_seq = SEQ_FADEOUT_START;
@@ -943,7 +950,7 @@ static void BrRecord_SeqConfirmPlay(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs)
         *p_seq = SEQ_SAVE_MAIN;
         break;
     case SEQ_SAVE_MAIN:
-        if (GameData_UpdateSave(p_wk->p_param->gameData) == 2) {
+        if (GameData_UpdateSave(p_wk->p_param->gameData) == SAVE_RESULT_OK) {
             BrBallEff_Start(p_wk->ballEff[CLACT_SURFACE_MAIN], BR_BALL_EFFECT_NONE, NULL);
             *p_seq = SEQ_PLAY_FADEOUT_START;
         }
@@ -960,7 +967,7 @@ static void BrRecord_SeqConfirmPlay(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs)
     case SEQ_PLAY_END:
         if (!GFL_SndIsPlaying(SEQ_SE_BREC_04)) {
             BrRecord_DeleteText(p_wk, p_wk->p_param);
-            p_wk->p_param->result = 1;
+            p_wk->p_param->result = BR_RECORD_RESULT_PLAY_VIDEO;
             BrProcSys_Interrupt(p_wk->p_param->procSys);
             BrSeq_End(p_seqwk);
         }
@@ -982,10 +989,10 @@ static void BrRecord_CreateInfo(BrRecordWork *p_wk, BrRecordProcParam *p_param) 
     }
     p_wk->isInfoCreated = TRUE;
 
-    if (BrRecord_IsSmallTeamMode(p_wk->header)) {
-        BrRes_LoadBG(p_param->res, 7, p_wk->heapId);
+    if (BrRecord_IsMultiMode(p_wk->header)) {
+        BrRes_LoadBG(p_param->res, BR_RES_BG_RECORD_INFO_SMALL_TEAM, p_wk->heapId);
     } else {
-        BrRes_LoadBG(p_param->res, 6, p_wk->heapId);
+        BrRes_LoadBG(p_param->res, BR_RES_BG_RECORD_INFO, p_wk->heapId);
     }
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
@@ -1109,11 +1116,11 @@ static void BrRecord_CreateIcons(BrRecordWork *p_wk, ClActUnit *unit, BattleRecH
     step = 6;
     start = 0;
     end = 6;
-    layout = 0;
-    if (BrRecord_IsSmallTeamMode(header) == TRUE) {
+    layout = BR_RECORD_ICON_LAYOUT_TWO_TRAINERS;
+    if (BrRecord_IsMultiMode(header) == TRUE) {
         step = 3;
         end = 3;
-        layout = 1;
+        layout = BR_RECORD_ICON_LAYOUT_FOUR_TRAINERS;
     }
     do {
         for (i = start; i < end; i++) {
@@ -1216,7 +1223,7 @@ static void BrRecord_DeleteInfo(BrRecordWork *p_wk, BrRecordProcParam *p_param) 
                 p_wk->msgWin[i] = NULL;
             }
         }
-        BrRes_UnloadBG(p_param->res, 6);
+        BrRes_UnloadBG(p_param->res, BR_RES_BG_RECORD_INFO);
         GFL_BGSysLoadScr(1);
         p_wk->isInfoCreated = FALSE;
     }
@@ -1232,8 +1239,8 @@ static void BrRecord_CreateButtons(BrRecordWork *p_wk, BrRecordProcParam *p_para
     }
     p_wk->isButtonsCreated = TRUE;
 
-    BrRes_LoadBG(p_param->res, 5, p_wk->heapId);
-    BrRes_LoadOBJ(p_param->res, 6, p_wk->heapId);
+    BrRes_LoadBG(p_param->res, BR_RES_BG_RECORD_CONTROLS, p_wk->heapId);
+    BrRes_LoadOBJ(p_param->res, BR_RES_OBJ_CONTROLS_S, p_wk->heapId);
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
 
@@ -1246,7 +1253,7 @@ static void BrRecord_CreateButtons(BrRecordWork *p_wk, BrRecordProcParam *p_para
         setup.y = 168;
         setup.sequence = 0;
         setup.priority = 1;
-        BrRes_GetObjData(p_param->res, 6, &obj);
+        BrRes_GetObjData(p_param->res, BR_RES_OBJ_CONTROLS_S, &obj);
         p_wk->btn[BTN_RETURN] =
             BrBtn_InitEx(&setup, 4, 96, CLACT_SURFACE_SUB, p_param->unit, p_wk->bmpoam, font, msg, &obj, p_wk->heapId);
         setup.x = 136;
@@ -1262,7 +1269,7 @@ static void BrRecord_CreateButtons(BrRecordWork *p_wk, BrRecordProcParam *p_para
         setup.y = 168;
         setup.sequence = 0;
         setup.priority = 1;
-        BrRes_GetObjData(p_param->res, 6, &obj);
+        BrRes_GetObjData(p_param->res, BR_RES_OBJ_CONTROLS_S, &obj);
         p_wk->btn[BTN_RETURN] =
             BrBtn_InitEx(&setup, 4, 96, CLACT_SURFACE_SUB, p_param->unit, p_wk->bmpoam, font, msg, &obj, p_wk->heapId);
     }
@@ -1290,8 +1297,8 @@ static void BrRecord_DeleteButtons(BrRecordWork *p_wk, BrRecordProcParam *p_para
             }
         }
         GFL_BGSysLoadScr(4);
-        BrRes_UnloadOBJ(p_param->res, 6);
-        BrRes_UnloadBG(p_param->res, 5);
+        BrRes_UnloadOBJ(p_param->res, BR_RES_OBJ_CONTROLS_S);
+        BrRes_UnloadBG(p_param->res, BR_RES_BG_RECORD_CONTROLS);
         p_wk->isButtonsCreated = FALSE;
     }
 }
@@ -1334,7 +1341,7 @@ static void BrRecord_CreateConfirm(BrRecordWork *p_wk, BrRecordProcParam *p_para
             p_wk->text = BrText_Init(p_param->res, p_wk->que, p_wk->heapId);
         }
         BrText_Print(p_wk->text, p_param->res, 0x14f);
-        BrRes_LoadBG(p_param->res, 0x1e, p_wk->heapId);
+        BrRes_LoadBG(p_param->res, BR_RES_BG_CONFIRM, p_wk->heapId);
         font = BrRes_GetFont(p_param->res);
         msg = BrRes_GetMsgData(p_param->res);
         for (i = 0; i < BR_RECORD_TITLE_MAX; i++) {
@@ -1357,7 +1364,7 @@ static void BrRecord_DeleteConfirm(BrRecordWork *p_wk, BrRecordProcParam *p_para
             }
         }
         GFL_BGSysLoadScr(4);
-        BrRes_UnloadBG(p_param->res, 0x1e);
+        BrRes_UnloadBG(p_param->res, BR_RES_BG_CONFIRM);
         if (p_wk->text != NULL) {
             BrText_Exit(p_wk->text, p_param->res);
             p_wk->text = NULL;
@@ -1366,16 +1373,16 @@ static void BrRecord_DeleteConfirm(BrRecordWork *p_wk, BrRecordProcParam *p_para
     }
 }
 
-// Whether the video's battle mode has teams of three Pokémon, whose icons are laid out in groups of three
-static BOOL BrRecord_IsSmallTeamMode(BattleRecHeader *header) {
-    u32 mode = BattleRec_GetHeaderValue(header, BATTLE_REC_HEADER_MODE, 0);
+// Whether the Pokémon icons use the four-Trainer multi layout, with three slots per Trainer.
+static BOOL BrRecord_IsMultiMode(BattleRecHeader *header) {
+    u32 modeIndex = BattleRec_GetHeaderValue(header, BATTLE_REC_HEADER_MODE, 0);
 
-    switch (mode) {
-    case 0x10:
-    case 0x11:
-    case 0x12:
-    case 0x13:
-    case 0x16:
+    switch (modeIndex) {
+    case BATTLE_REC_MODE_COLOSSEUM_MULTI_NO_RESTRICTIONS:
+    case BATTLE_REC_MODE_COLOSSEUM_MULTI_FLAT:
+    case BATTLE_REC_MODE_COLOSSEUM_MULTI_NO_RESTRICTIONS_LAUNCHER:
+    case BATTLE_REC_MODE_COLOSSEUM_MULTI_FLAT_LAUNCHER:
+    case BATTLE_REC_MODE_BATTLE_SUBWAY_MULTI:
         return TRUE;
     default:
         return FALSE;
@@ -1385,12 +1392,12 @@ static BOOL BrRecord_IsSmallTeamMode(BattleRecHeader *header) {
 // Whether the video's battle mode has a counter to show, such as a Battle Subway streak
 static BOOL BrRecord_IsCounterMode(BattleRecHeader *header) {
     BOOL ret = FALSE;
-    u32 mode = BattleRec_GetHeaderValue(header, BATTLE_REC_HEADER_MODE, 0);
+    u32 modeIndex = BattleRec_GetHeaderValue(header, BATTLE_REC_HEADER_MODE, 0);
 
-    switch (mode) {
-    case 0x14:
-    case 0x15:
-    case 0x16:
+    switch (modeIndex) {
+    case BATTLE_REC_MODE_BATTLE_SUBWAY_SINGLE:
+    case BATTLE_REC_MODE_BATTLE_SUBWAY_DOUBLE:
+    case BATTLE_REC_MODE_BATTLE_SUBWAY_MULTI:
         return TRUE;
     }
     return ret;

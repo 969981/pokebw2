@@ -11,6 +11,7 @@
 #include "app/battle_recorder/br_res.h"
 #include "app/battle_recorder/br_util.h"
 #include "constants/sound.h"
+#include "gfl/backup_system.h"
 #include "gfl/bg_sys.h"
 #include "gfl/clact.h"
 #include "gfl/msg.h"
@@ -269,7 +270,7 @@ static void BrBvDelete_SeqMain(BrSeq *p_seqwk, u32 *p_seq, void *p_wk_adrs) {
         u32 ret = BattleRecOv_DeleteVideoMain(p_wk->p_param->gameData, p_wk->p_param->mode);
 
         p_wk->cnt++;
-        if (ret == 2 || ret == 3) {
+        if (ret == SAVE_RESULT_OK || ret == SAVE_RESULT_NG) {
             p_wk->p_param->isDelete = TRUE;
             *p_seq = SEQ_DELETE_WAIT;
         }
@@ -325,7 +326,7 @@ static void BrBvDelete_CreateConfirm(BrBvDeleteWork *p_wk, BrBvDeleteProcParam *
     GFL_StrBufFree(str);
     GFL_StrBufFree(src);
 
-    BrRes_LoadBG(p_param->res, 0x1e, p_wk->heapId);
+    BrRes_LoadBG(p_param->res, BR_RES_BG_CONFIRM, p_wk->heapId);
     font = BrRes_GetFont(p_param->res);
     msg = BrRes_GetMsgData(p_param->res);
     for (i = 0; i < MSGWIN_MAX; i++) {
@@ -353,7 +354,7 @@ static void BrBvDelete_DeleteConfirm(BrBvDeleteWork *p_wk, BrBvDeleteProcParam *
         }
     }
     GFL_BGSysLoadScr(4);
-    BrRes_UnloadBG(p_param->res, 0x1e);
+    BrRes_UnloadBG(p_param->res, BR_RES_BG_CONFIRM);
 }
 
 // The answers of the question

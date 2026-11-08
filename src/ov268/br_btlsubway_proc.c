@@ -27,6 +27,55 @@
 #include "system/wordset.h"
 
 // The lines of the menu, which are what the main screen shows
+// Rows shared by the Single and Double Train record tables.
+enum {
+    BR_BTLSUBWAY_WINS_ROW_TITLE = 0,
+    BR_BTLSUBWAY_WINS_ROW_TRAIN_NAME = 1,
+    BR_BTLSUBWAY_WINS_ROW_STREAK_LABEL = 2,
+    BR_BTLSUBWAY_WINS_ROW_STREAK_VALUE = 3,
+    BR_BTLSUBWAY_WINS_ROW_STREAK_UNIT = 4,
+    BR_BTLSUBWAY_WINS_ROW_RECORD_LABEL = 5,
+    BR_BTLSUBWAY_WINS_ROW_RECORD_VALUE = 6,
+    BR_BTLSUBWAY_WINS_ROW_RECORD_UNIT = 7,
+};
+
+// Rows of the Multi Train record table, grouped by Trainer and friend partners.
+enum {
+    BR_BTLSUBWAY_MULTI_ROW_TITLE = 0,
+    BR_BTLSUBWAY_MULTI_ROW_TRAIN_NAME = 1,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_LABEL = 2,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_STREAK_LABEL = 3,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_STREAK_VALUE = 4,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_STREAK_UNIT = 5,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_RECORD_LABEL = 6,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_RECORD_VALUE = 7,
+    BR_BTLSUBWAY_MULTI_ROW_TRAINER_RECORD_UNIT = 8,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_LABEL = 9,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_STREAK_LABEL = 10,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_STREAK_VALUE = 11,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_STREAK_UNIT = 12,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_RECORD_LABEL = 13,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_RECORD_VALUE = 14,
+    BR_BTLSUBWAY_MULTI_ROW_FRIEND_RECORD_UNIT = 15,
+};
+
+// Rows of the Wi-Fi Train record table.
+enum {
+    BR_BTLSUBWAY_WIFI_ROW_TITLE = 0,
+    BR_BTLSUBWAY_WIFI_ROW_TRAIN_NAME = 1,
+    BR_BTLSUBWAY_WIFI_ROW_RECORD_LABEL = 2,
+    BR_BTLSUBWAY_WIFI_ROW_RANK_LABEL = 3,
+    BR_BTLSUBWAY_WIFI_ROW_RANK_VALUE = 4,
+};
+
+// Menu-window slots; the selected page IDs start one higher.
+enum {
+    BR_BTLSUBWAY_MENU_ROW_SINGLE = 0,
+    BR_BTLSUBWAY_MENU_ROW_DOUBLE = 1,
+    BR_BTLSUBWAY_MENU_ROW_MULTI = 2,
+    BR_BTLSUBWAY_MENU_ROW_WIFI = 3,
+};
+
 enum {
     BR_BTLSUBWAY_PAGE_TOP,
     BR_BTLSUBWAY_PAGE_SINGLE,
@@ -43,7 +92,6 @@ enum {
 #define BR_BTLSUBWAY_PRINT_COLOR 0x3da0
 
 // The graphics of the Battle Points, from br_res.c
-#define BR_RES_OBJ_BTLSUBWAY_BP 13
 
 // The player's Battle Points: the icon and the digits
 typedef struct {
@@ -346,7 +394,7 @@ static void BrBtlSubway_CreateTop(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p) 
 
     font = BrRes_GetFont(p->res);
     msg = BrRes_GetMsgData(p->res);
-    BrRes_LoadBG(p->res, 0xe, wk->heapId);
+    BrRes_LoadBG(p->res, BR_RES_BG_BTLSUBWAY_TOP, wk->heapId);
 
     for (i = 0; i < 1; i++) {
         const BrBtlSubwayMsgWinData *data = &sBrBtlSubwayTopWins[i];
@@ -383,12 +431,12 @@ static void BrBtlSubway_CreateSingle(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *
     font = BrRes_GetFont(p->res);
     msg = BrRes_GetMsgData(p->res);
     wordSet = BrRes_GetWordSet(p->res);
-    BrRes_LoadBG(p->res, 0xa, wk->heapId);
+    BrRes_LoadBG(p->res, BR_RES_BG_BTLSUBWAY_SINGLE, wk->heapId);
 
     if (BrBtlSubway_IsSuperSingle(p->score, p->gameData)) {
-        mode = 5;
+        mode = BSUBWAY_MODE_SUPER_SINGLE;
     } else {
-        mode = 0;
+        mode = BSUBWAY_MODE_SINGLE;
     }
 
     for (i = 0; i < 8; i++) {
@@ -397,14 +445,14 @@ static void BrBtlSubway_CreateSingle(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *
         wk->msgWin[i] = BrMsgWin_Init(1, data->x, data->y, data->w, data->h, 14, wk->que, wk->heapId);
         BrMsgWin_SetPos(wk->msgWin[i], 0, 1, BR_MSGWIN_POS_ABSOLUTE);
         switch (i) {
-        case 1:
+        case BR_BTLSUBWAY_WINS_ROW_TRAIN_NAME:
             // The line's name
             str = GFL_MsgDataLoadStrbufNew(msg, BrBtlSubway_IsSuperSingle(p->score, p->gameData) ? 0x83 : 0x7e);
             break;
-        case 2:
+        case BR_BTLSUBWAY_WINS_ROW_STREAK_LABEL:
             str = GFL_MsgDataLoadStrbufNew(msg, BSubwayScoreData_HasStage(p->score, mode) ? 0x91 : 0x87);
             break;
-        case 3: {
+        case BR_BTLSUBWAY_WINS_ROW_STREAK_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetStreak(p->score, mode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -415,7 +463,7 @@ static void BrBtlSubway_CreateSingle(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *
             GFL_StrBufFree(src);
             break;
         }
-        case 6: {
+        case BR_BTLSUBWAY_WINS_ROW_RECORD_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetMaxStreak(p->score, mode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -453,12 +501,12 @@ static void BrBtlSubway_CreateDouble(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *
     font = BrRes_GetFont(p->res);
     msg = BrRes_GetMsgData(p->res);
     wordSet = BrRes_GetWordSet(p->res);
-    BrRes_LoadBG(p->res, 0xb, wk->heapId);
+    BrRes_LoadBG(p->res, BR_RES_BG_BTLSUBWAY_DOUBLE, wk->heapId);
 
     if (BrBtlSubway_IsSuperDouble(p->score, p->gameData)) {
-        mode = 6;
+        mode = BSUBWAY_MODE_SUPER_DOUBLE;
     } else {
-        mode = 1;
+        mode = BSUBWAY_MODE_DOUBLE;
     }
 
     for (i = 0; i < 8; i++) {
@@ -467,14 +515,14 @@ static void BrBtlSubway_CreateDouble(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *
         wk->msgWin[i] = BrMsgWin_Init(1, data->x, data->y, data->w, data->h, 14, wk->que, wk->heapId);
         BrMsgWin_SetPos(wk->msgWin[i], 0, 1, BR_MSGWIN_POS_ABSOLUTE);
         switch (i) {
-        case 1:
+        case BR_BTLSUBWAY_WINS_ROW_TRAIN_NAME:
             // The line's name
             str = GFL_MsgDataLoadStrbufNew(msg, BrBtlSubway_IsSuperDouble(p->score, p->gameData) ? 0x84 : 0x7f);
             break;
-        case 2:
+        case BR_BTLSUBWAY_WINS_ROW_STREAK_LABEL:
             str = GFL_MsgDataLoadStrbufNew(msg, BSubwayScoreData_HasStage(p->score, mode) ? 0x91 : 0x87);
             break;
-        case 3: {
+        case BR_BTLSUBWAY_WINS_ROW_STREAK_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetStreak(p->score, mode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -485,7 +533,7 @@ static void BrBtlSubway_CreateDouble(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *
             GFL_StrBufFree(src);
             break;
         }
-        case 6: {
+        case BR_BTLSUBWAY_WINS_ROW_RECORD_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetMaxStreak(p->score, mode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -524,14 +572,14 @@ static void BrBtlSubway_CreateMulti(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p
     font = BrRes_GetFont(p->res);
     msg = BrRes_GetMsgData(p->res);
     wordSet = BrRes_GetWordSet(p->res);
-    BrRes_LoadBG(p->res, 0xc, wk->heapId);
+    BrRes_LoadBG(p->res, BR_RES_BG_BTLSUBWAY_MULTI, wk->heapId);
 
     if (BrBtlSubway_IsSuperMulti(p->score, p->gameData)) {
-        mode = 7;
-        commMode = 8;
+        mode = BSUBWAY_MODE_SUPER_MULTI;
+        commMode = BSUBWAY_MODE_SUPER_COMM_MULTI;
     } else {
-        mode = 2;
-        commMode = 3;
+        mode = BSUBWAY_MODE_MULTI;
+        commMode = BSUBWAY_MODE_COMM_MULTI;
     }
 
     for (i = 0; i < BR_BTLSUBWAY_MSGWIN_MAX; i++) {
@@ -540,14 +588,14 @@ static void BrBtlSubway_CreateMulti(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p
         wk->msgWin[i] = BrMsgWin_Init(1, data->x, data->y, data->w, data->h, 14, wk->que, wk->heapId);
         BrMsgWin_SetPos(wk->msgWin[i], 0, 1, BR_MSGWIN_POS_ABSOLUTE);
         switch (i) {
-        case 1:
+        case BR_BTLSUBWAY_MULTI_ROW_TRAIN_NAME:
             // The line's name
             str = GFL_MsgDataLoadStrbufNew(msg, BrBtlSubway_IsSuperMulti(p->score, p->gameData) ? 0x85 : 0x80);
             break;
-        case 3:
+        case BR_BTLSUBWAY_MULTI_ROW_TRAINER_STREAK_LABEL:
             str = GFL_MsgDataLoadStrbufNew(msg, BSubwayScoreData_HasStage(p->score, mode) ? 0x91 : 0x87);
             break;
-        case 4: {
+        case BR_BTLSUBWAY_MULTI_ROW_TRAINER_STREAK_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetStreak(p->score, mode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -558,7 +606,7 @@ static void BrBtlSubway_CreateMulti(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p
             GFL_StrBufFree(src);
             break;
         }
-        case 7: {
+        case BR_BTLSUBWAY_MULTI_ROW_TRAINER_RECORD_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetMaxStreak(p->score, mode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -569,10 +617,10 @@ static void BrBtlSubway_CreateMulti(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p
             GFL_StrBufFree(src);
             break;
         }
-        case 10:
+        case BR_BTLSUBWAY_MULTI_ROW_FRIEND_STREAK_LABEL:
             str = GFL_MsgDataLoadStrbufNew(msg, BSubwayScoreData_HasStage(p->score, commMode) ? 0x91 : 0x87);
             break;
-        case 11: {
+        case BR_BTLSUBWAY_MULTI_ROW_FRIEND_STREAK_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetStreak(p->score, commMode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -583,7 +631,7 @@ static void BrBtlSubway_CreateMulti(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p
             GFL_StrBufFree(src);
             break;
         }
-        case 14: {
+        case BR_BTLSUBWAY_MULTI_ROW_FRIEND_RECORD_VALUE: {
             int streak = MATH_IMin(BSubwayScoreData_GetMaxStreak(p->score, commMode), BR_BTLSUBWAY_STREAK_MAX);
             StrBuf *src;
 
@@ -620,13 +668,13 @@ static void BrBtlSubway_CreateWifi(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p)
     font = BrRes_GetFont(p->res);
     msg = BrRes_GetMsgData(p->res);
     wordSet = BrRes_GetWordSet(p->res);
-    BrRes_LoadBG(p->res, 0xd, wk->heapId);
+    BrRes_LoadBG(p->res, BR_RES_BG_BTLSUBWAY_WIFI, wk->heapId);
 
     for (i = 0; i < 5; i++) {
         const BrBtlSubwayMsgWinData *data = &sBrBtlSubwayWifiWins[i];
 
         wk->msgWin[i] = BrMsgWin_Init(1, data->x, data->y, data->w, data->h, 14, wk->que, wk->heapId);
-        if (i == 4) {
+        if (i == BR_BTLSUBWAY_WIFI_ROW_RANK_VALUE) {
             u32 rank = BSubwayScoreData_GetWifiRank(p->score);
             StrBuf *src = GFL_MsgDataLoadStrbufNew(msg, data->msgID);
 
@@ -656,7 +704,7 @@ static void BrBtlSubway_DeletePage(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p)
             wk->msgWin[i] = NULL;
         }
     }
-    BrRes_UnloadBG(p->res, 0xa);
+    BrRes_UnloadBG(p->res, BR_RES_BG_BTLSUBWAY_SINGLE);
     if (wk->text != NULL) {
         BrText_Exit(wk->text, p->res);
         wk->text = NULL;
@@ -672,8 +720,8 @@ static void BrBtlSubway_CreateMenu(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p)
     int i;
     u32 msgID;
 
-    BrRes_LoadOBJ(p->res, 6, wk->heapId);
-    BrRes_LoadBG(p->res, 9, wk->heapId);
+    BrRes_LoadOBJ(p->res, BR_RES_OBJ_CONTROLS_S, wk->heapId);
+    BrRes_LoadBG(p->res, BR_RES_BG_BTLSUBWAY_MENU, wk->heapId);
     font = BrRes_GetFont(p->res);
     msg = BrRes_GetMsgData(p->res);
 
@@ -682,7 +730,7 @@ static void BrBtlSubway_CreateMenu(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p)
     setup.y = 168;
     setup.sequence = 0;
     setup.priority = 1;
-    BrRes_GetObjData(p->res, 6, &obj);
+    BrRes_GetObjData(p->res, BR_RES_OBJ_CONTROLS_S, &obj);
     wk->btn = BrBtn_InitEx(&setup, 4, 96, CLACT_SURFACE_SUB, p->unit, wk->bmpoam, font, msg, &obj, wk->heapId);
 
     for (i = 0; i < BR_BTLSUBWAY_MENU_MAX; i++) {
@@ -690,28 +738,28 @@ static void BrBtlSubway_CreateMenu(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p)
 
         wk->menuWin[i] = BrMsgWin_Init(4, data->x, data->y, data->w, data->h, 14, wk->que, wk->heapId);
         switch (i) {
-        case 0:
+        case BR_BTLSUBWAY_MENU_ROW_SINGLE:
             if (BrBtlSubway_IsSuperSingle(p->score, p->gameData)) {
                 msgID = 0x83;
             } else {
                 msgID = 0x7e;
             }
             break;
-        case 1:
+        case BR_BTLSUBWAY_MENU_ROW_DOUBLE:
             if (BrBtlSubway_IsSuperDouble(p->score, p->gameData)) {
                 msgID = 0x84;
             } else {
                 msgID = 0x7f;
             }
             break;
-        case 2:
+        case BR_BTLSUBWAY_MENU_ROW_MULTI:
             if (BrBtlSubway_IsSuperMulti(p->score, p->gameData)) {
                 msgID = 0x85;
             } else {
                 msgID = 0x80;
             }
             break;
-        case 3:
+        case BR_BTLSUBWAY_MENU_ROW_WIFI:
             msgID = 0x81;
             break;
         }
@@ -732,8 +780,8 @@ static void BrBtlSubway_DeleteMenu(BrBtlSubwayWork *wk, BrBtlSubwayProcParam *p)
         BrBtn_Exit(wk->btn);
         wk->btn = NULL;
     }
-    BrRes_UnloadOBJ(p->res, 6);
-    BrRes_UnloadBG(p->res, 9);
+    BrRes_UnloadOBJ(p->res, BR_RES_OBJ_CONTROLS_S);
+    BrRes_UnloadBG(p->res, BR_RES_BG_BTLSUBWAY_MENU);
 }
 
 // The line of the menu that the touch is on, other than the one shown, or BR_BTLSUBWAY_PAGE_TOP
@@ -762,7 +810,7 @@ static u32 BrBtlSubway_GetTrgMenu(BrBtlSubwayWork *wk, u32 x, u32 y) {
 
 // Whether the Super lines are open and the player has taken the line
 static BOOL BrBtlSubway_IsSuperSingle(BSubwayScoreData *score, GameData *gameData) {
-    BOOL flag = BSubwayScoreData_SetFlag(score, 4, BSUBWAY_FLAG_GET);
+    BOOL flag = BSubwayScoreData_SetFlag(score, BSUBWAY_SCORE_FLAG_SINGLE_CLEARED, BSUBWAY_FLAG_GET);
     BOOL isOpen = EventWork_FlagGet(GameData_GetEventWork(gameData), EVENT_FLAG_0x0960);
 
     if (flag && isOpen) {
@@ -772,7 +820,7 @@ static BOOL BrBtlSubway_IsSuperSingle(BSubwayScoreData *score, GameData *gameDat
 }
 
 static BOOL BrBtlSubway_IsSuperDouble(BSubwayScoreData *score, GameData *gameData) {
-    BOOL flag = BSubwayScoreData_SetFlag(score, 5, BSUBWAY_FLAG_GET);
+    BOOL flag = BSubwayScoreData_SetFlag(score, BSUBWAY_SCORE_FLAG_DOUBLE_CLEARED, BSUBWAY_FLAG_GET);
     BOOL isOpen = EventWork_FlagGet(GameData_GetEventWork(gameData), EVENT_FLAG_0x0960);
 
     if (flag && isOpen) {
@@ -782,7 +830,7 @@ static BOOL BrBtlSubway_IsSuperDouble(BSubwayScoreData *score, GameData *gameDat
 }
 
 static BOOL BrBtlSubway_IsSuperMulti(BSubwayScoreData *score, GameData *gameData) {
-    BOOL flag = BSubwayScoreData_SetFlag(score, 6, BSUBWAY_FLAG_GET);
+    BOOL flag = BSubwayScoreData_SetFlag(score, BSUBWAY_SCORE_FLAG_MULTI_CLEARED, BSUBWAY_FLAG_GET);
     BOOL isOpen = EventWork_FlagGet(GameData_GetEventWork(gameData), EVENT_FLAG_0x0960);
 
     if (flag && isOpen) {
@@ -831,7 +879,7 @@ static void BrBtlSubwayBp_Exit(BrBtlSubwayBp *bp) {
 static void BrBtlSubwayBp_SetValue(BrBtlSubwayBp *bp, u32 value) {
     static const u32 sBrBtlSubwayBpDigits[] = { 1, 10, 100, 1000, 10000 };
     u8 rest = value;
-    int keta = 0;
+    int digitCount = 0;
     int i;
 
     // The number of digits, which nothing uses
@@ -841,7 +889,7 @@ static void BrBtlSubwayBp_SetValue(BrBtlSubwayBp *bp, u32 value) {
                 break;
             }
             rest /= 10;
-            keta++;
+            digitCount++;
         }
     }
 
