@@ -408,7 +408,12 @@ by the Nitro cell and multi-cell animation data. Optional female variants have `
 original 4-bit color indices, while `normal.pal` and `shiny.pal` are the palettes used by the game. Edit palette
 colors in the JASC `.pal` file; the PNG palette is for viewing in an image editor. The game assembles characters
 into sprites using the adjacent `*_cells.ncer` and `*_animations.nanr.lz11` Nitro resources, so a raw PNG sheet can look
-fragmented. Those resources are preserved as separate source files and can be replaced with edited Nitro data.
+fragmented. Those resources are preserved as separate source files and can be replaced with edited Nitro data, or
+with their JSON: `tools/data/nitro_cells.py edit FILE` replaces a cell, animation, multi-cell or MCSS file
+(`*_info.bin`, `MCSSBin` in `src/system/mcss.c`, whose quads place each part of `front.png`) with JSON that packs back
+to it byte for byte, `front_cells.ncer.json`, and the packer packs it from there; an unchanged one keeps the game's
+bytes and compression. The files stay the sources, since their JSON is about thirty times their size.
+[Cells and animations as JSON](cells-and-animations.md) describes the JSON.
 
 `icon.png` is a 32×64 two-frame icon, using a bank in
 `res/pokemon/shared/icon_palettes.pal` (the PC boxes use `icon_palettes_box.pal`); the code in
@@ -768,6 +773,7 @@ the same directories. A sprite's files:
   warns about it.
 - `cells.ncer`, `animations.nanr`, `multi_cells.nmcr` and `multi_animations.nmar`, the battle sprite's Nitro cells and
   animations, uncompressed, which Nitro editors open; the packer compresses the animations as the game loads them.
+  Each may be replaced by its JSON (`nitro_cells.py edit`, [Cells and animations as JSON](cells-and-animations.md)).
 - `mcss.bin`, the battle sprite system's data (`mcss.c`), which the game reads as it is stored.
 
 To add a sprite, add its constant to the end of its list and its directory, as a copy of a sprite to start from, and
@@ -1012,8 +1018,9 @@ The binary glTF (`.glb`) holds the model geometry and its buffer in one file and
 For example, `MAP_MODEL_MAP_OUTGRASS` is a four-vertex ground plane, and `MAP_MODEL_NACRENE_CITY_6_M_WHOUSE01_00_00` a
 house from Nacrene City's map matrix, with 736 vertices and ten materials. A `data.json` with `"transformed": true`
 marks a model whose GLB positions went through its scene transforms on export, which the packer reverses from the GLB
-and the original Nitro model. Seven unusual prop models also keep their `positions` as exported, because their
-transforms cannot yet be reconstructed. These fields come from the export; edits belong in the GLB or PNG. The packer
+and the original Nitro model. Six unusual prop models also keep their `positions` as exported, because their
+transforms cannot yet be reconstructed, as the shortest decimals that read back as the GLB's float32s; a model keeps
+them only where the packer makes something else of its GLB without them. These fields come from the export; edits belong in the GLB or PNG. The packer
 derives the original triangle and vertex order from Nitro commands, so a Blender export can reindex vertices while
 the packer still maps edits to the right commands.
 
@@ -1064,6 +1071,25 @@ the new texture was not already listed by the model. Blender may embed preview i
 packer resolves those by image name. Texture pixels are sourced from the shared PNGs, so save pixel edits there.
 The packer accepts embedded pixel edits when the matching shared PNG is saved, and rejects unsaved
 embedded edits instead of silently ignoring them.
+
+A model whose `data.json` has `"written": true` is written whole from its GLB instead
+(`tools/data/nitro_model_writer.py`): a material for each GLB material, bound by its image to the `texture_set`'s
+texture, and a draw call for each primitive, so the GLB may add materials and draw calls the game's model lacks. A
+material of the game's model by the same name keeps its lights, flags and texture matrix; a new one is opaque, fogged,
+front-faced and repeats its texture, lit by light 0 where its vertices have normals. The model needs its
+`texture_set` and positions as the model draws them (no `"transformed"`). The display lists are strips or quads,
+whichever is shorter; every one of the game's 17,129 shapes draws the same triangles when written this way, and
+`nitro_model_writer.py check` reads and writes back all 1,065 models byte for byte. A map model added after the game's
+in `generated/map_models.txt` has a `"template"`, one of the game's map models, whose chunk it copies (its type, its
+collision's size and layers, its props) and whose model name its GLB's mesh has, and is always written.
+
+A map texture set's directory may hold `imports.json` (`texture_imports.schema.json`): textures of other sets, each
+`{"texture": NAME, "from": MAP_TEXTURE_SET_...}`, that the set gains after its own, their images and palettes copied as
+the other set encodes them, its PNG edits included (`tools/data/nitro_texture_writer.py`; a 4×4-compressed texture
+can't be imported yet). A model moved to an area
+whose set lacks some of its textures keeps them so; a copy of each PNG beside the set's own lets Blender show it, and
+the packer reads only the other set's. The whole-model writer, new models and imports are bjayers's, from
+[Paper White 2](https://github.com/bjayers/paperwhite2).
 Other Nitro material settings retain their original values.
 Adding material slots or draw calls is not yet supported. Every map model contains only an
 `MDL0` block; its textures come from the shared texture archive.
@@ -1395,7 +1421,10 @@ describe the fields.
 Each zone's events are `res/field/events/<zone>.json`, named after its constant, as pokeplatinum's `res/field/events/`:
 the zone's entities file (`a/1/2/6`), which `LoadZoneEntities` reads. It has the zone's background events, such as
 signs, its NPCs, its warps, its triggers and its init scripts, and `res/field/events/events.schema.json` documents each
-field, with swan's names and layouts (`include/field/zone.h`, `include/field/field_actor.h`).
+field, with swan's names and layouts (`include/field/zone.h`, `include/field/field_actor.h`). `LoadZoneEntities` reads
+the whole file into `EventData` without checking its size, so a zone's packed events must fit its 2,436 bytes (the
+game's largest take 2,396): a background event takes 20 bytes, an NPC 36, a warp 20 and a trigger 22, and the build
+stops at a zone past the limit, since the game would freeze entering it.
 
 ```json
 {
@@ -1473,7 +1502,8 @@ after their constant where `generated/narc_<archive>.txt` names them (`professor
 - the rest are the members themselves, decompressed: screens (`.nscr`), which place the tiles, cells (`.ncer`), cell
   animations (`.nanr`), multi-cells (`.nmcr`, `.nmar`), 3D animations (`.nsbca`, `.nsbta`, `.nsbma`, `.nsbtp`,
   `.nsbva`), as the field props keep theirs, a font or a particle resource that the converter doesn't take (`.nftr`,
-  `.spa`), and other data (`.bin`). Tools such as NitroPaint edit them.
+  `.spa`), and other data (`.bin`). Tools such as NitroPaint edit them, and a cell, animation or multi-cell file may
+  be replaced by its JSON, `01.ncer.json` (`nitro_cells.py edit`, [Cells and animations as JSON](cells-and-animations.md)).
 
 `archive.json` lists the members that the game stores LZ-compressed (`{"compressed": {"05.png": "lz10"}}`), which the
 packer compresses again: an edited one as a valid stream of literals, an eighth larger than its data. A member that
@@ -1501,7 +1531,8 @@ A model's GLB and PNGs are edited and packed as the field props' are (see "Map m
 converters. `dump` has [Apicula](https://github.com/scurest/apicula) convert each model, from `PATH` or `--apicula
 PATH`; `pack`, which the build runs, needs only Python. The model's `data.json` is a prop's without the resource ID:
 `glb_sha256`, the hash of the GLB as extracted, and `transformed` and `positions` where the GLB's positions went through
-the model's node transforms. A GLB that still has its hash packs the game's model, and an edited one is converted back
+the model's node transforms: `positions` only where the packer makes something else of the GLB without them (101 of
+the archives' models), not where it refuses the model's edits with them or without. A GLB that still has its hash packs the game's model, and an edited one is converted back
 into it: its positions, UVs, material colors and texture bindings, as for a prop. An edited PNG packs into the model's
 textures as a texture set's does, in the texture's format and its shared palette. The GLB gives each of the model's draw
 calls a material of its own, copying a material that several share (`awa_1.001`), since Blender joins the draw calls of
