@@ -6,6 +6,7 @@
 #include "gfl/heap.h"
 #include "gfl/str.h"
 #include "nitro/math.h"
+#include "save/extra_block_savedata.h"
 #include "struct_decls.h"
 
 // The Pokémon World Tournament: overlay 55's wbt_system.c, wbt_tool.c, wbt_setup.c and wbt_party.c, and the script
@@ -104,7 +105,7 @@ typedef struct {
     u8 expertType;
     u8 rank : 3;
     u8 iv : 5;
-    u8 unk9;
+    u8 padding9;
     // The music of the battle against the Trainer and of winning it
     u16 bgm;
     u16 winBgm;
@@ -149,92 +150,9 @@ typedef struct {
     u8 score;
 } WbtMatch;
 
-// This recovered layout has two separate uses: downloaded Trainer slots and an extra regulation rule.
-// In the latter use rank is banMoves and index is move; keep the Trainer fields distinct.
-typedef struct {
-    u8 type;
-    u8 rank;
-    u16 index;
-} WbtUnk18A;
-
-// A tournament downloaded to the save
-typedef struct {
-    // The tournament's regulation, which WbtSystem_GetRegulation copies
-    u8 minCount;
-    u8 maxCount;
-    u8 level;
-    u8 levelMode;
-    u16 maxLevelTotal;
-    u8 allowSameSpecies;
-    u8 allowSameItem;
-    u8 bannedSpecies[0x52];
-    u8 bannedItems[0x4c];
-    u8 unkA6;
-    u8 battleType;
-    // Set for a World Championships tournament, which has their music and its own battle background
-    u8 isWcs;
-    u8 requiredType;
-    u16 bannedMove;
-} WbtDownloadedTournament;
-
-// A Pokémon of a Trainer of a downloaded tournament, which becomes a party Pokémon
-typedef struct {
-    u16 species;
-    u16 nickname[11];
-    u16 item;
-    // Whether PML_GenPID makes the Pokémon shiny
-    u8 shiny : 1;
-    u8 unk1A_1 : 7;
-    // The ability, by its number
-    u8 ability;
-    u8 evs[6];
-    u16 moves[4];
-    // Two bits per move
-    u8 ppUps;
-    u8 nature;
-    struct {
-        u32 hp : 5;
-        u32 attack : 5;
-        u32 defense : 5;
-        u32 speed : 5;
-        u32 spAttack : 5;
-        u32 spDefense : 5;
-        u32 sex : 2;
-    } ivs;
-    u8 form;
-    u8 ball;
-    u8 level;
-    u8 happiness;
-} WbtDownloadedPokemon;
-
-// A Trainer of a downloaded tournament: up to six Pokémon, and four lines of 74 characters that the Trainer says,
-// each unless its message set is 0 a message of that set of the Trainers' messages instead
-typedef struct {
-    WbtDownloadedPokemon pokemon[6];
-    // The Trainer's name and Trainer class name
-    u16 name[16];
-    u16 className[0x16];
-    u16 lines[4][0x4a];
-    u8 classIndex;
-    u8 messageSets[6];
-    u8 unk3DB;
-    // WbtEntrant's aiBits
-    u16 aiBits;
-    u8 unk3DE[2];
-} WbtDownloadedTrainer;
-
-// A tournament downloaded to the save, with the Trainers of its four rounds
-typedef struct {
-    u8 unk0[0xa];
-    u16 name[0x25];
-    u8 unk54[0x174];
-    WbtDownloadedTournament tournament;
-    WbtDownloadedTrainer trainers[4];
-} WbtDownload;
-
 struct WbtSystem {
     HeapID heapId;
-    u8 unk2[2];
+    u8 padding2[2];
     // Clear the saved opponent slots even when the player wins.
     BOOL clearOpponentSlots;
     WbtTrainers *trainers;
@@ -248,30 +166,29 @@ struct WbtSystem {
     u8 downloadSlot;
     // The map's season, rolled when the tournament starts
     u8 season;
-    u8 unk1F;
+    u8 padding1F;
     u64 seed;
     MATHRandContext32 rand;
     WbtEntrant entrants[8];
     WbtMatch matches[7];
     Regulation regulation;
-    // Passed to the party screen as a RegulationExtraRule without changing this recovered layout.
-    WbtUnk18A extraRule;
-    u8 unk18E[2];
+    // The rule WbtSystem_GetExtraRule makes for the party screen
+    RegulationExtraRule extraRule;
+    u8 padding18E[2];
     // Whether the downloaded tournament of the slot downloadSlot is in the save and its checksum holds
     BOOL downloadValid;
-    WbtDownload download;
-    // The kind and rank of the seven Trainers a downloaded tournament picks, from the second
-    WbtUnk18A downloadSlots[7];
-    u8 unk13A4[4];
+    // The downloaded tournament, copied from the save: its entrant slots are the kind and rank of the seven Trainers it
+    // picks, from the second
+    WbtDownloadData download;
     u8 useBattleBox;
-    u8 unk13A9[3];
+    u8 padding13A9[3];
     // The Battle Box's party
     PokeParty *battleBoxParty;
     u8 castSlots[6];
     // The Pokémon the party screen showed the summary of, and how it ended
     u16 listIndex;
     u16 listResult;
-    u8 unk13BA[2];
+    u8 padding13BA[2];
     PokeParty *playerParty;
     PokeParty *opponentParty;
     // All rental candidates before entry, then the original selected team restored when picks reset.
@@ -284,7 +201,7 @@ struct WbtSystem {
     StrBuf *trainerWinMsg;
     // One for each round. Tournaments 1 and 10 award their total as Battle Points
     u8 roundRemaining[3];
-    u8 unk13DF;
+    u8 padding13DF;
     // The script variable that plugin 6 passes with EventWbtPokeSelect_Create's event
     u16 *resultVar;
     u32 rentalMode;
@@ -380,7 +297,7 @@ u32 WbtEntrant_HasSpecialPokemon(WbtEntrant *entrant);
 void WbtSystem_SetPickedParty(WbtSystem *sys, GameData *gameData);
 u8 WbtSystem_GetRegulationId(WbtSystem *sys);
 Regulation *WbtSystem_GetRegulation(WbtSystem *sys);
-WbtUnk18A *WbtSystem_GetExtraRule(WbtSystem *sys);
+RegulationExtraRule *WbtSystem_GetExtraRule(WbtSystem *sys);
 u32 WbtSystem_GetOpponentSeat(WbtSystem *sys);
 void WbtSystem_PlayFirstRounds(WbtSystem *sys, MATHRandContext32 *rand);
 

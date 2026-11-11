@@ -220,7 +220,7 @@ Egg and Bad Egg after the species' names:
 | `species_names_en.txt` to `pokedex_weights_ja.txt` | `\from{species.pokedex.<language>.name}` and the like | The other languages' `pokedex.languages`: names, categories, entries, heights and weights |
 | `move_names.txt` | `\from{moves.name}` | Each move's `name` |
 | `move_names_upper.txt` | `\from{moves.name_upper}` | The same in capitals |
-| `btl_main_13.txt` | `\from{moves.description}` | Each move's `description` |
+| `move_descriptions.txt` | `\from{moves.description}` | Each move's `description` |
 | `item_names.txt` | `\from{items.name}` | Each item's `name` |
 | `item_names_with_article.txt` | `\from{items.name_with_article}` | The same with its article (`name_article`, or the whole `name_with_article` where it isn't written as the others) |
 | `item_names_plural.txt` | `\from{items.name_plural}` | Each item's `name_plural` |
@@ -249,9 +249,10 @@ are named after their constants, which give their order in the archive: a system
 `generated/text_banks.txt` (`species_names.txt` for `TEXT_BANK_SPECIES_NAMES`), and a script message file after its
 `SCRIPT_TEXT_*` in `script_text_banks.txt`, which names a zone's after the zone (`black_city.txt`) and a global script
 file's after its first script ID (`global_10885.txt`). A system message file is named after what it holds, which the
-word set function that loads it or its contents show (`move_names.txt`, `natures.txt`), or else after the source file or
-function that loads it (`delete_save.txt`, `b_bag_main.txt`), with the index the code picks it by where it loads one of
-a run (`pkwd_briefing_movie_00.txt` for `TEXT_BANK_PKWD_BRIEFING_MOVIE_00`, `TEXT_BANK_PKWD_BRIEFING_MOVIE_00 + movie`);
+word set function that loads it or its contents show (`move_names.txt`, `natures.txt`), or else after the screen whose
+code loads it, in English with Game Freak's abbreviations spelled out (`delete_save.txt`, `battle_bag.txt` for
+`b_bag_main.c`), with the index the code picks it by where it loads one of a run (`pokewood_briefing_movie_00.txt` for
+`TEXT_BANK_POKEWOOD_BRIEFING_MOVIE_00`, `TEXT_BANK_POKEWOOD_BRIEFING_MOVIE_00 + movie`);
 the others keep their number until code that loads them is known (`0009.txt` for `TEXT_BANK_0009`). To rename one, rename its constant with `rename_constant.py`, which renames the file, its message IDs
 and its header with it (`TEXT_BANK_0377` to `TEXT_BANK_TOWN_MAP` made `Bank0377_Text_FlyWhere` `TownMap_Text_FlyWhere`).
 Both versions have the same text. The code names a message file by its constant too: `GFL_MsgSysLoadData(FALSE,
@@ -978,7 +979,7 @@ stage's edge color and its models and animations, two to a variant, the two side
 
 The battle regulations (`a/1/0/6`, `ARCID_REGULATION`) are `res/battle/regulations/<n>.json`, regulation n, which the
 Union Room, the Wi-Fi and wireless battles, the Battle Subway and Pokéstar Studios load by number
-(`PokeRegulation_Load`): its name, a message of `load_battle_type_text_to_strbuf.txt`; how many Pokémon a team enters;
+(`PokeRegulation_Load`): its name, a message of `battle_type_names.txt`; how many Pokémon a team enters;
 the level and how it applies; whether a team may have two of a species or of a held item; the banned species and items;
 the species a team must have; the Wonder Launcher; whether nicknames are kept and the partners' teams shown; the
 selection's time limit; the battle type; and how many battles may be played. `tools/data/regulation_data.py` packs
@@ -1266,7 +1267,7 @@ its field effect and its category, and its kind and rank decide when Mr. Medal h
 
 The Funfest Missions are `res/funfest/missions.json`, files 0 and 1 of `a/2/8/9` (`ARCID_FMISSION_DATA`), each
 mission's header and parameters (`field/fest_mission_data.h`), which `FestMission_Load` copies into the mission's
-config: its goal's and result's messages of `res/text/system/get_text_file_for_fest_missions.txt` by ID, its target,
+config: its goal's and result's messages of `res/text/system/funfest_missions.txt` by ID, its target,
 a species by its constant where its kind says so, its reward and second item and the event flag it needs by their
 constants, and the time and score of each of its four levels. `res/funfest/species_lists.json` is the archive's other
 files, the species that a people mission picks its people's Pokémon from (`FesMissionPeople_LoadSpecies`).
@@ -1304,7 +1305,7 @@ and `join_avenue.schema.json` describes every table and column, some from the co
 
 The Xtransceiver's calls are in `res/local_tvt/`: `calls.json` (`a/2/4/0`, `ARCID_LOCAL_TVT_CALL_DATA`) is the calls
 the player can make, each a person's after a count of calls with them (`local_tvt_calldata.c`), with the background
-and zone of their face and what they say, messages of `res/text/system/local_tvt_talk.txt` by ID; `scripts.json`
+and zone of their face and what they say, messages of `res/text/system/xtransceiver_call_talk.txt` by ID; `scripts.json`
 (`a/2/3/4`, `ARCID_LOCAL_TVT_SCRIPT`) is the calls the story makes (`local_tvt_scriptmode.c`), each its faces' persons
 and zones and its commands, which make a face talk, with a message of the script's own text file, wait or play a
 sound. `tools/data/local_tvt_data.py` packs both, the same in both versions, and `local_tvt.schema.json` describes
@@ -1353,7 +1354,7 @@ members. Program n is the directory `res/musicals/programs/<n>/`, a file for eac
   each of the four kinds of prop and the bonus it adds to them at random, its list of props to give away, and its six
   performers, of which the game picks the other three entrants among those whose `min_shots` the player has reached.
   A performer has its Pokémon's species and form, its look as an `OBJ_CODE_*` (the C's `trainerClass`, which the
-  player's is `OBJ_CODE_HERO` or `OBJ_CODE_HEROINE`), its name as a message of `res/text/system/btl_main_9.txt` (the
+  player's is `OBJ_CODE_HERO` or `OBJ_CODE_HEROINE`), its name as a message of `res/text/system/musical_npc_names.txt` (the
   same line of `musical_event.txt` is its Pokémon's nickname), and the props its Pokémon wears, each `[item, slot]`.
   `res/musicals/programs/program.schema.json` describes the fields.
 - `messages.txt`, the program's messages, in the format of `res/text/`'s (see [Text](#text)), with IDs of the

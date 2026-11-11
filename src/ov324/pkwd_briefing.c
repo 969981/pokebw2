@@ -40,8 +40,8 @@
 #include "system/str_tool.h"
 #include "system/text_speed.h"
 #include "system/wordset.h"
-#include "text/system/event_pass_power_startmenu.h"
-#include "text/system/pkwd_briefing_common.h"
+#include "text/system/pokewood_briefing_common.h"
+#include "text/system/pokewood_cast_names.h"
 
 // Pokéstar Studios' theater: the movie's set in 3D on the upper screen and the audience in its seats on the lower
 // one. Before the battle it shows the briefing of the scene a line at a time; after it, the movie's credits scroll
@@ -1373,7 +1373,8 @@ static void PkwdBriefingText_FreeBG(PkwdBriefingText *text) {
 }
 
 static void PkwdBriefingText_LoadBriefing(PkwdBriefingText *text, s32 movie, PlayerInfo *playerInfo, HeapID heapId) {
-    text->msgData = GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_PKWD_BRIEFING_MOVIE_00 + movie, heapId);
+    text->msgData =
+        GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_POKEWOOD_BRIEFING_MOVIE_00 + movie, heapId);
     text->lines[0] = GFL_StrBufCreate(304, heapId);
     text->lines[1] = GFL_StrBufCreate(304, heapId);
     text->empty = GFL_StrBufCreate(304, heapId);
@@ -1425,11 +1426,11 @@ static StrBuf *PkwdBriefing_CreatePlayerName(PkwdBriefingParam *param, HeapID he
         name = copyTrainerNameToNewStrbuf(param->playerInfo->name, heapId);
     } else {
         MsgData *msgData =
-            GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_EVENT_PASS_POWER_STARTMENU, HEAPID_TAIL(heapId));
+            GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_POKEWOOD_CAST_NAMES, HEAPID_TAIL(heapId));
         StrBuf *compressed;
 
         name = GFL_StrBufCreate(16, heapId);
-        compressed = GFL_MsgDataLoadStrbufNew(msgData, EventPassPowerStartmenu_Text_PopRoxie);
+        compressed = GFL_MsgDataLoadStrbufNew(msgData, PokewoodCastNames_Text_PopRoxie);
         GFL_StrBufUncompress(name, compressed);
         GFL_StrBufFree(compressed);
         GFL_MsgDataFree(msgData);
@@ -1448,29 +1449,28 @@ static void PkwdBriefing_LoadCredits(PkwdBriefingParam *param, PkwdBriefingText 
     StrBuf *strbuf;
     PkwdBriefingMovieFile *file;
 
-    text->msgData = GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_PKWD_BRIEFING_COMMON, heapId);
+    text->msgData = GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_POKEWOOD_BRIEFING_COMMON, heapId);
     text->wordSet = GFL_WordSetSystemCreateDefault(heapId);
-    text->empty = GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_Empty_327);
-    text->unusedCreditsText = GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_Empty_328);
+    text->empty = GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_Empty_327);
+    text->unusedCreditsText = GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_Empty_328);
     for (i = 0; i < 15; i++) {
         text->credits[CREDIT_MOVIE + i] = GFL_MsgDataLoadStrbufNew(text->msgData, movie * 15 + i);
     }
-    text->credits[CREDIT_SCREENPLAY] = GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_Screenplay);
-    text->credits[CREDIT_VFX] = GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_Vfx);
-    text->credits[CREDIT_ART] = GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_PokestarStudiosArt);
-    text->credits[CREDIT_DIRECTOR] = GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_Director);
+    text->credits[CREDIT_SCREENPLAY] = GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_Screenplay);
+    text->credits[CREDIT_VFX] = GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_Vfx);
+    text->credits[CREDIT_ART] = GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_PokestarStudiosArt);
+    text->credits[CREDIT_DIRECTOR] = GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_Director);
     text->credits[CREDIT_PLAYER_ROLE] =
-        GFL_MsgDataLoadStrbufNew(text->msgData, movie * 15 + PkwdBriefingCommon_Text_Kid + sex);
+        GFL_MsgDataLoadStrbufNew(text->msgData, movie * 15 + PokewoodBriefingCommon_Text_Kid + sex);
     text->credits[CREDIT_PLAYER_NAME] = PkwdBriefing_CreatePlayerName(param, heapId);
 
-    msgData =
-        GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_EVENT_PASS_POWER_STARTMENU, HEAPID_TAIL(heapId));
+    msgData = GFL_MsgSysLoadData(FALSE, ARCID_SYSTEM_MESSAGE, TEXT_BANK_POKEWOOD_CAST_NAMES, HEAPID_TAIL(heapId));
     actorName2 = 0;
     if (sex == GENDER_MALE) {
-        actorName = EventPassPowerStartmenu_Text_BrycenMan;
+        actorName = PokewoodCastNames_Text_BrycenMan;
     } else {
-        actorName2 = EventPassPowerStartmenu_Text_Brycen_8;
-        actorName = EventPassPowerStartmenu_Text_BrycenMan_5;
+        actorName2 = PokewoodCastNames_Text_Brycen_8;
+        actorName = PokewoodCastNames_Text_BrycenMan_5;
     }
     text->credits[CREDIT_ACTOR_NAME] = GFL_StrBufCreate(16, heapId);
     text->credits[CREDIT_ACTOR_NAME_2] = GFL_StrBufCreate(16, heapId);
@@ -1484,7 +1484,7 @@ static void PkwdBriefing_LoadCredits(PkwdBriefingParam *param, PkwdBriefingText 
 
     file = GFL_ArcSysReadHeapNew(ARCID_POKEWOOD_MOVIE, movie, HEAPID_TAIL(heapId));
     text->credits[CREDIT_DIRECTOR_NAME] =
-        GFL_MsgDataLoadStrbufNew(text->msgData, PkwdBriefingCommon_Text_DavidPokench + file->director);
+        GFL_MsgDataLoadStrbufNew(text->msgData, PokewoodBriefingCommon_Text_DavidPokench + file->director);
     starLevel = file->starLevel;
     GFL_HeapFree(file);
 
