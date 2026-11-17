@@ -106,7 +106,8 @@ enum {
 };
 
 typedef struct {
-    u32 unk0;
+    // The BG system's state: never read or written
+    u32 state;
 } PkwdSelectScreenBG;
 
 // The resources of a group of cell actors
@@ -168,6 +169,7 @@ typedef struct {
     BOOL touched;
     BlinkPalAnm *blinks[PAGE_SIZE];
     u32 page;
+    // Never read or written
     u32 unkE4;
     PkwdSelectScreenMovie movies[SCREEN_COUNT];
     // The screens with a movie first
@@ -837,10 +839,10 @@ static void PkwdSelectScreen_LoadMovies(PkwdSelectScreenWork *wk, PkwdSelectScre
             wk->movies[i].time = Pokewood_GetLoadedMovieField(POKEWOOD_BLOCK_FIELD_TIME, 0);
             wk->movies[i].watched = PokewoodSave_IsSlotWatched(param->save, i);
             for (j = 0; j < CAST_COUNT; j++) {
-                Pokewood_GetLoadedMovieField(POKEWOOD_BLOCK_FIELD_PKM_0 + j, (u32)pkm);
+                Pokewood_GetLoadedMovieField(POKEWOOD_BLOCK_FIELD_PKM_0 + j, pkm);
                 wk->movies[i].cast[j] = PokeParty_GetParam(pkm, PKM_PARAM_SPECIES, NULL);
             }
-            Pokewood_GetLoadedMovieField(POKEWOOD_BLOCK_FIELD_PKM_0, (u32)pkm);
+            Pokewood_GetLoadedMovieField(POKEWOOD_BLOCK_FIELD_PKM_0, pkm);
             setPartyPokemonSpeciesNameToStrbuf(wk->movies[i].wordSet, 0, pkm);
             GFL_HeapFree(pkm);
         } else {

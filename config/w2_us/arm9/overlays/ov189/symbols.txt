@@ -654,24 +654,17 @@ data_ov189_021adc1c kind:data(any) addr:0x021adc5c
 data_ov189_021adc20 kind:data(any) addr:0x021adc60
 data_ov189_021adc28 kind:data(any) addr:0x021adc68
 data_ov189_021adc50 kind:data(any) addr:0x021adc90
-data_ov189_021adc6d kind:data(any) addr:0x021adcad ambiguous
 data_ov189_021adc7c kind:data(any) addr:0x021adcbc
-data_ov189_021adc95 kind:data(any) addr:0x021adcd5 ambiguous
 data_ov189_021adcac kind:data(any) addr:0x021adcec
-data_ov189_021adcb5 kind:data(any) addr:0x021adcf5 ambiguous
-data_ov189_021adcd5 kind:data(any) addr:0x021add15 ambiguous
 data_ov189_021add00 kind:data(any) addr:0x021add40
 data_ov189_021add04 kind:data(any) addr:0x021add44
-data_ov189_021add19 kind:data(any) addr:0x021add59 ambiguous
 data_ov189_021add30 kind:data(any) addr:0x021add70
 data_ov189_021add38 kind:data(any) addr:0x021add78
 data_ov189_021add44 kind:data(any) addr:0x021add84
 data_ov189_021add48 kind:data(any) addr:0x021add88
 data_ov189_021add4c kind:data(any) addr:0x021add8c
-data_ov189_021add5d kind:data(any) addr:0x021add9d ambiguous
 data_ov189_021add64 kind:data(any) addr:0x021adda4
 data_ov189_021adda4 kind:data(any) addr:0x021adde4
-data_ov189_021adde1 kind:data(any) addr:0x021ade21 ambiguous
 data_ov189_021adde4 kind:data(any) addr:0x021ade24
 data_ov189_021ade00 kind:data(any) addr:0x021ade40
 data_ov189_021ade24 kind:data(any) addr:0x021ade64
@@ -686,43 +679,35 @@ data_ov189_021adebc kind:data(any) addr:0x021adefc
 data_ov189_021adec4 kind:data(any) addr:0x021adf04
 data_ov189_021adecc kind:data(any) addr:0x021adf0c
 data_ov189_021aded8 kind:data(any) addr:0x021adf18
-data_ov189_021aded9 kind:data(any) addr:0x021adf19 ambiguous
 data_ov189_021adee0 kind:data(any) addr:0x021adf20
 data_ov189_021adee8 kind:data(any) addr:0x021adf28
 data_ov189_021adeec kind:data(any) addr:0x021adf2c
 data_ov189_021adef8 kind:data(any) addr:0x021adf38
 data_ov189_021adf08 kind:data(any) addr:0x021adf48
 data_ov189_021adf14 kind:data(any) addr:0x021adf54
-data_ov189_021adf1d kind:data(any) addr:0x021adf5d ambiguous
 data_ov189_021adf20 kind:data(any) addr:0x021adf60
 data_ov189_021adf28 kind:data(any) addr:0x021adf68
 data_ov189_021adf2c kind:data(any) addr:0x021adf6c
 data_ov189_021adf3c kind:data(any) addr:0x021adf7c
 data_ov189_021adf4c kind:data(any) addr:0x021adf8c
 data_ov189_021adf58 kind:data(any) addr:0x021adf98
-data_ov189_021adf61 kind:data(any) addr:0x021adfa1 ambiguous
 data_ov189_021adf64 kind:data(any) addr:0x021adfa4
 data_ov189_021adf74 kind:data(any) addr:0x021adfb4
 data_ov189_021adf88 kind:data(any) addr:0x021adfc8
 data_ov189_021adf9c kind:data(any) addr:0x021adfdc
 data_ov189_021adfa0 kind:data(any) addr:0x021adfe0
-data_ov189_021adfa5 kind:data(any) addr:0x021adfe5 ambiguous
 data_ov189_021adfb0 kind:data(any) addr:0x021adff0
 data_ov189_021adfc8 kind:data(any) addr:0x021ae008
 data_ov189_021adfe0 kind:data(any) addr:0x021ae020
-data_ov189_021adfe1 kind:data(any) addr:0x021ae021 ambiguous
 data_ov189_021adff4 kind:data(any) addr:0x021ae034
 data_ov189_021ae010 kind:data(any) addr:0x021ae050
 data_ov189_021ae014 kind:data(any) addr:0x021ae054
 data_ov189_021ae01c kind:data(any) addr:0x021ae05c
 data_ov189_021ae028 kind:data(any) addr:0x021ae068
-data_ov189_021ae02d kind:data(any) addr:0x021ae06d ambiguous
 data_ov189_021ae038 kind:data(any) addr:0x021ae078
-data_ov189_021ae03c kind:data(any) addr:0x021ae07c ambiguous
 data_ov189_021ae048 kind:data(any) addr:0x021ae088
 data_ov189_021ae064 kind:data(any) addr:0x021ae0a4
 data_ov189_021ae074 kind:data(any) addr:0x021ae0b4
-data_ov189_021ae075 kind:data(any) addr:0x021ae0b5 ambiguous
 data_ov189_021ae09c kind:data(any) addr:0x021ae0dc
 data_ov189_021ae0b0 kind:data(any) addr:0x021ae0f0
 data_ov189_021ae0c4 kind:data(any) addr:0x021ae104
@@ -796,43 +781,7 @@ sNHttpRap kind:bss addr:0x021ae6e0
 sEntropy kind:bss addr:0x021ae6e4
 sConnectionList kind:bss addr:0x021ae704
 sWaitInfo kind:bss addr:0x021ae70c
-data_ov189_021ae700 kind:bss addr:0x021ae740
-data_ov189_021ae711 kind:bss addr:0x021ae751 ambiguous
-data_ov189_021ae72d kind:bss addr:0x021ae76d ambiguous
-data_ov189_021ae79d kind:bss addr:0x021ae7dd ambiguous
-data_ov189_021ae7bd kind:bss addr:0x021ae7fd ambiguous
-data_ov189_021ae7d5 kind:bss addr:0x021ae815 ambiguous
-data_ov189_021ae7ed kind:bss addr:0x021ae82d ambiguous
-data_ov189_021ae85d kind:bss addr:0x021ae89d ambiguous
-data_ov189_021ae8c9 kind:bss addr:0x021ae909 ambiguous
-data_ov189_021ae905 kind:bss addr:0x021ae945 ambiguous
-data_ov189_021ae92d kind:bss addr:0x021ae96d ambiguous
-data_ov189_021ae959 kind:bss addr:0x021ae999 ambiguous
-data_ov189_021aea41 kind:bss addr:0x021aea81 ambiguous
-data_ov189_021aea8d kind:bss addr:0x021aeacd ambiguous
-data_ov189_021aedf5 kind:bss addr:0x021aee35 ambiguous
-data_ov189_021aee6d kind:bss addr:0x021aeead ambiguous
-data_ov189_021aeedd kind:bss addr:0x021aef1d ambiguous
-data_ov189_021aef61 kind:bss addr:0x021aefa1 ambiguous
-data_ov189_021aefc9 kind:bss addr:0x021af009 ambiguous
-data_ov189_021af0b1 kind:bss addr:0x021af0f1 ambiguous
-data_ov189_021af105 kind:bss addr:0x021af145 ambiguous
-data_ov189_021af341 kind:bss addr:0x021af381 ambiguous
-data_ov189_021af371 kind:bss addr:0x021af3b1 ambiguous
-data_ov189_021af3b1 kind:bss addr:0x021af3f1 ambiguous
-data_ov189_021af435 kind:bss addr:0x021af475 ambiguous
-data_ov189_021af4e5 kind:bss addr:0x021af525 ambiguous
-data_ov189_021af531 kind:bss addr:0x021af571 ambiguous
-data_ov189_021af585 kind:bss addr:0x021af5c5 ambiguous
-data_ov189_021af5d5 kind:bss addr:0x021af615 ambiguous
-data_ov189_021af659 kind:bss addr:0x021af699 ambiguous
-data_ov189_021af709 kind:bss addr:0x021af749 ambiguous
-data_ov189_021af821 kind:bss addr:0x021af861 ambiguous
-data_ov189_021af865 kind:bss addr:0x021af8a5 ambiguous
-data_ov189_021af8b5 kind:bss addr:0x021af8f5 ambiguous
-data_ov189_021af8fd kind:bss addr:0x021af93d ambiguous
-data_ov189_021af94d kind:bss addr:0x021af98d ambiguous
-data_ov189_021af9dd kind:bss addr:0x021afa1d ambiguous
+sRootStorage kind:bss addr:0x021ae740
 data_ov189_021afd0d_w2_us kind:bss addr:0x021afd0d ambiguous
 data_ov189_021afd35_w2_us kind:bss addr:0x021afd35 ambiguous
 data_ov189_021afdd5_w2_us kind:bss addr:0x021afdd5 ambiguous
@@ -858,7 +807,6 @@ data_ov189_021b0681_w2_us kind:bss addr:0x021b0681 ambiguous
 data_ov189_021b0905_w2_us kind:bss addr:0x021b0905 ambiguous
 data_ov189_021b0d03_w2_us kind:bss addr:0x021b0d03 ambiguous
 data_ov189_021b0fdc_w2_us kind:bss addr:0x021b0fdc ambiguous
-data_ov189_021b26bc kind:bss addr:0x021b26fc ambiguous
 data_ov189_021b2850 kind:bss addr:0x021b2890
 sGHTTPStartCount kind:bss addr:0x021b28a0
 ghiProxyPort kind:bss addr:0x021b28a8

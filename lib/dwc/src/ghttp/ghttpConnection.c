@@ -65,18 +65,18 @@ GHIConnection *ghiNewConnection(void) {
     connection->inUse = gsi_true;
     connection->request = slot;
     connection->uniqueID = sConnections.nextUniqueId++;
-    connection->type = 0;
-    connection->state = 0;
+    connection->type = GHIGET;
+    connection->state = GHTTPSocketInit;
     connection->URL = NULL;
     connection->serverAddress = NULL;
     connection->serverIP = 0;
     connection->serverPort = 0;
     connection->requestPath = NULL;
     connection->sendHeaders = NULL;
-    connection->unk_30 = 0;
+    connection->saveFile = NULL;
     connection->blocking = gsi_false;
     connection->persistConnection = gsi_false;
-    connection->result = 0;
+    connection->result = GHTTPSuccess;
     connection->progressCallback = NULL;
     connection->completedCallback = NULL;
     connection->callbackParam = NULL;
@@ -99,7 +99,7 @@ GHIConnection *ghiNewConnection(void) {
     connection->lastThrottleRecv = 0;
     connection->post = NULL;
     connection->maxRecvTime = 500;
-    connection->proxyOverridePort = 80;
+    connection->proxyOverridePort = GHI_DEFAULT_PORT;
     connection->proxyOverrideServer = NULL;
     connection->encryptor.mInterface = NULL;
     connection->encryptor.mInitialized = gsi_false;
@@ -178,8 +178,8 @@ GHTTPBool ghiFreeConnectionData(GHIConnection *connection) {
     ghiLock();
     gsifree(connection->URL);
     connection->URL = NULL;
-    gsifree(connection->unk_34);
-    connection->unk_34 = NULL;
+    gsifree(connection->saveFileName);
+    connection->saveFileName = NULL;
     gsifree(connection->serverAddress);
     connection->serverAddress = NULL;
     gsifree(connection->requestPath);
@@ -285,7 +285,7 @@ void ghiRedirectConnection(GHIConnection *connection) {
         gsifree(connection->requestPath);
         connection->socket = -1;
         connection->requestPath = NULL;
-        connection->state = 0;
+        connection->state = GHTTPSocketInit;
         ghiResetBuffer(&connection->sendBuffer);
         ghiResetBuffer(&connection->encodeBuffer);
         ghiResetBuffer(&connection->recvBuffer);
@@ -302,7 +302,7 @@ void ghiRedirectConnection(GHIConnection *connection) {
             }
             connection->encryptor.mInitialized = gsi_false;
             if (strncmp("https://", connection->URL, 8) != 0) {
-                connection->encryptor.mEngine = 0;
+                connection->encryptor.mEngine = GHTTPEncryptionEngine_None;
                 connection->encryptor.mInterface = NULL;
             }
         }

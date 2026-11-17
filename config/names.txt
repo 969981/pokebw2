@@ -8124,10 +8124,12 @@ overlays/ov011 0x0218df74 WCMi_OverridedDeviceId
 overlays/ov011 0x0218df7c sWcmGlobal
 overlays/ov011 0x0218dfb4 sWcmRssiCursor
 overlays/ov011 0x0218dfb5 sWcmRssiSamples
+overlays/ov011 0x0218dfc8 gameCode
 overlays/ov011 0x0218dfd0 sNasLogin
 overlays/ov011 0x0218dfd4 DWCi_NasTimeValid
 overlays/ov011 0x0218dfd8 DWCi_NasTimeLocalSeconds
 overlays/ov011 0x0218dfe0 DWCi_NasTimeOffset
+overlays/ov011 0x0218dfe8 sRandom
 overlays/ov011 0x0218e000 sCloseStats
 overlays/ov011 0x0218e014 sLogin
 overlays/ov011 0x0218e018 sMatchRoot
@@ -9135,6 +9137,7 @@ overlays/ov012 0x0216a670 Scrcmd_PairSys_ActorPairSetMoveEnable
 overlays/ov012 0x0216a6a4 Scrcmd_HollowRival_HollowRivalSetValue
 overlays/ov012 0x0216a6dc Scrcmd_HollowRival_HollowRivalGetValue
 overlays/ov012 0x0216a718 Scrcmd_HollowRival_HollowRivalSetFlag
+overlays/ov012 0x0216a748 Scrcmd_HollowRival_HollowRivalCheckCount
 overlays/ov012 0x0216a79c Scrcmd_HollowRival_HollowRivalGetCounter
 overlays/ov012 0x0216a7cc Scrcmd_HollowRival_HollowRivalSetMet
 overlays/ov012 0x0216a7f4 Scrcmd_HollowRival_HollowRivalSetSpecies
@@ -19322,6 +19325,7 @@ overlays/ov167 0x0219c95c GetBagCursor
 overlays/ov167 0x0219c964 IsRecordingEnabled
 overlays/ov167 0x0219c980 IsRecPlayMode
 overlays/ov167 0x0219c988 GetStudioMode
+overlays/ov167 0x0219c99c BtlSetup_GetAlternateFieldVariant
 overlays/ov167 0x0219c9b0 GetStudioMovieId
 overlays/ov167 0x0219c9c0 IsStudioSkipDisabled
 overlays/ov167 0x0219c9d4 SetRecPlayQuit
@@ -26503,6 +26507,7 @@ overlays/ov189 0x021ae6a0 sNHttpRap
 overlays/ov189 0x021ae6a4 sEntropy
 overlays/ov189 0x021ae6c4 sConnectionList
 overlays/ov189 0x021ae6cc sWaitInfo
+overlays/ov189 0x021ae700 sRootStorage
 overlays/ov189 0x021b2860 sGHTTPStartCount
 overlays/ov189 0x021b2868 ghiProxyPort
 overlays/ov189 0x021b286c ghiProxyAddress
@@ -36147,7 +36152,7 @@ overlays/ov294 0x021a26f0 IntroCmd_Talk
 overlays/ov294 0x021a2778 IntroCmd_SaveStart
 overlays/ov294 0x021a2788 IntroCmd_SavePause
 overlays/ov294 0x021a27bc IntroCmd_SaveResume
-overlays/ov294 0x021a27cc IntroCmd_Save43
+overlays/ov294 0x021a27cc IntroCmd_SaveNop
 overlays/ov294 0x021a27dc IntroCmd_SaveWait
 overlays/ov294 0x021a2844 IntroCmd_SetMsgLanguage
 overlays/ov294 0x021a2860 IntroCmd_SetGender

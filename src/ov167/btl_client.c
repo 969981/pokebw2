@@ -51,6 +51,10 @@
 // The most energy a client's Shooter holds
 #define SHOOTER_ENERGY_MAX 14
 
+// The slot BattleMon_FindMoveSlot returns for a move the mon doesn't have, past its four (move_handlers.c names the
+// same sentinel MOVE_SLOT_NONE)
+#define MOVE_SLOT_NONE 4
+
 // What drives a client, which picks its handler of each command
 enum {
     BTL_CLIENT_TYPE_PLAYER,
@@ -364,6 +368,13 @@ enum {
     STUDIO_CHOICE_RESULT_BAD,
 };
 
+// The turns of a movie's ending scenes: the win's and the loss's, which Studio_ShowResult sets from the battle's
+// result and the movie's script marks its ending scenes with
+enum {
+    STUDIO_TURN_WIN = 100,
+    STUDIO_TURN_LOSE = 101,
+};
+
 // A Pokestar Studios movie's score
 typedef struct {
     s16 points[STUDIO_SCORE_MAX];
@@ -386,7 +397,7 @@ typedef struct {
     u8 stagingNextSeq;
     // The step of the scene's messages and states
     u8 msgStep;
-    u8 unk05;
+    u8 unk05; // Cleared in Studio_PlayScene, never read
     // The entry of the movie's script
     s8 scene;
     // The choice picked, or saved, in the scene
@@ -395,7 +406,7 @@ typedef struct {
     s32 newField;
     // The last choice recorded plus 1, which the scenes that follow it check
     s8 recordedChoice;
-    u8 unk11[0xb];
+    u8 unk11[0xb]; // Never read or written; 11 bytes before msgId1, more than its alignment needs
     s32 msgId1;
     s32 msgId2;
     // The move of the player's first action and the species of the last Pokemon that fainted, which start scenes
@@ -460,7 +471,7 @@ struct BtlClient {
     s8 prevActionIdx;
     u8 firstActionIdx;
     u8 forceActionMsg;
-    u8 unk129;
+    u8 unk129; // Written with the client's ID, never read
     BattleAction actions[3];
     u8 shooterCost[3];
     BtlServerCmdQueue *cmdQueue;
@@ -495,7 +506,7 @@ struct BtlClient {
     u8 recTimeUp : 1;
     u8 recCanceled : 1;
     u8 changePokeCount;
-    u8 unk1BC;
+    u8 unk1BC; // Never read or written
     u8 turnCount;
     u8 changePokePos[6];
     BtlClientStudioWork studio;
@@ -565,7 +576,7 @@ static s16 StudioRules_GetTurnEvent(const BtlScriptedRules *rules, u8 turn);
 static BOOL Studio_ChangeField(BtlClient *client);
 static u32 Studio_GetResultMsgId(BtlClient *client, const BtlScriptedRules *rules, BtlSetup *setup);
 static BOOL Studio_ShowResult(BtlClient *client);
-static BOOL RecPlaySelectActionCore(BtlClient *client, s32 *seq, BOOL arg2);
+static BOOL RecPlaySelectActionCore(BtlClient *client, s32 *seq, BOOL playStudioScene);
 static BOOL RecPlaySelectAction(BtlClient *client, s32 *seq);
 static void SetNullReturnAction(BtlClient *client);
 static BOOL BattleClient_ActionSelectInit(BtlClient *client, s32 *seq);
@@ -690,7 +701,7 @@ static BOOL BattleClient_ScPlayBgm(BtlClient *client, s32 *seq, const u32 *args)
 static BOOL BattleClient_ScHideMsgWindow(BtlClient *client, s32 *seq, const u32 *args);
 static BOOL BattleClient_ScAddEVs(BtlClient *client, s32 *seq, const u32 *args);
 static BOOL BattleClient_ScExpGain(BtlClient *client, s32 *seq, const u32 *args);
-static BOOL BattleClient_ForgetMoveSECallback(u32 arg0);
+static BOOL BattleClient_ForgetMoveSECallback(u32 event);
 static BOOL BattleClient_LearnMoveSeq(BtlClient *client, s32 *seq, BattleMon *mon);
 static BOOL BattleClient_ScBallThrow(BtlClient *client, s32 *seq, const u32 *args);
 static BOOL BattleClient_ScBallThrowTrainer(BtlClient *client, s32 *seq, const u32 *args);
@@ -1196,7 +1207,7 @@ static BOOL BattleClient_MainProcRecPlay(BtlClient *client) {
             BtlMain_EndRecSkip(client->mainModule);
         }
         break;
-    case 5:
+    case CLIENT_SKIP_SEQ_END:
         return TRUE;
     }
     return FALSE;
@@ -1250,9 +1261,15 @@ static void Studio_InitAudienceTimers(BtlClientStudioWork *studio) {
     }
 }
 
+// The steps of BattleClient_SetupView: start the battle's view command, then wait for it and set up the timers
+enum {
+    SETUP_VIEW_SEQ_START,
+    SETUP_VIEW_SEQ_WAIT_START,
+};
+
 static BOOL BattleClient_SetupView(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case SETUP_VIEW_SEQ_START:
         if (BtlSetup_GetBattleType(client->mainModule) != BTL_TYPE_CAPTURE_DEMO) {
             BtlvCore_StartCommand(client->viewCore, BTLV_CMD_BATTLE_START);
         } else {
@@ -1260,7 +1277,7 @@ static BOOL BattleClient_SetupView(BtlClient *client, s32 *seq) {
         }
         (*seq)++;
         break;
-    case 1:
+    case SETUP_VIEW_SEQ_WAIT_START:
         if (BtlvCore_WaitCommand(client->viewCore)) {
             client->cmdLimitTime = GetCommandTimeLimit(client->mainModule);
             client->gameLimitTime = GetGameTimeLimit(client->mainModule);
@@ -1328,33 +1345,43 @@ static BattleMon *BattleClient_GetSingleBattleFrontMon(BtlClient *client) {
     return NULL;
 }
 
+// The steps of BattleClient_PlayerSelectRotation: show the rotation screen, poll it until the player picks or the
+// time runs out, pick one at random on a timeout, hide the timer and return the rotation
+enum {
+    ROTATION_SEQ_SHOW,
+    ROTATION_SEQ_POLL,
+    ROTATION_SEQ_PICK_ON_TIMEOUT,
+    ROTATION_SEQ_HIDE_TIMER,
+    ROTATION_SEQ_RETURN,
+};
+
 static BOOL BattleClient_PlayerSelectRotation(BtlClient *client, s32 *seq) {
     u8 select;
 
     switch (*seq) {
-    case 0:
+    case ROTATION_SEQ_SHOW:
         BtlvCore_ShowRotationScreen(client->viewCore, client->rotationDir);
         BattleClient_StartCmdLimitTimer(client);
         (*seq)++;
         break;
-    case 1:
+    case ROTATION_SEQ_POLL:
         if (CheckIfOverCmdLimit(client)) {
             BtlvCore_HideRotationScreen(client->viewCore);
-            *seq = 2;
+            *seq = ROTATION_SEQ_PICK_ON_TIMEOUT;
         } else if (BtlvCore_PollRotationInput(client->viewCore, &select)) {
             client->rotationDir = select;
-            *seq = 3;
+            *seq = ROTATION_SEQ_HIDE_TIMER;
         }
         break;
-    case 2:
+    case ROTATION_SEQ_PICK_ON_TIMEOUT:
         client->rotationDir = BattleClient_PickRotation(client->rotationDir);
         (*seq)++;
         break;
-    case 3:
+    case ROTATION_SEQ_HIDE_TIMER:
         BattleClient_HideCmdLimitTimer(client);
         (*seq)++;
         break;
-    case 4:
+    case ROTATION_SEQ_RETURN:
         client->returnData = &client->rotationDir;
         client->returnDataSize = 1;
         return TRUE;
@@ -1367,23 +1394,25 @@ static u8 BattleClient_PickRotation(u8 dir) {
 
     if (dir == 0) {
         if (rand < 30) {
-            dir = 3;
+            dir = BTLV_EFFECT_ROTATE_THIRD;
         } else if (rand < 60) {
-            dir = 2;
+            dir = BTLV_EFFECT_ROTATE_SECOND;
         } else {
-            dir = 1;
+            dir = BTLV_EFFECT_ROTATE_NONE;
         }
     } else {
+        // The rotation picked so far, a BTLV_EFFECT_ROTATE_*: the next pick keeps the front or brings the second or
+        // third up, never the same one
         switch (dir) {
-        case 1:
+        case BTLV_EFFECT_ROTATE_NONE:
         default:
-            dir = rand < 50 ? 2 : 3;
+            dir = rand < 50 ? BTLV_EFFECT_ROTATE_SECOND : BTLV_EFFECT_ROTATE_THIRD;
             break;
-        case 3:
-            dir = rand < 40 ? 2 : 1;
+        case BTLV_EFFECT_ROTATE_THIRD:
+            dir = rand < 40 ? BTLV_EFFECT_ROTATE_SECOND : BTLV_EFFECT_ROTATE_NONE;
             break;
-        case 2:
-            dir = rand < 40 ? 3 : 1;
+        case BTLV_EFFECT_ROTATE_SECOND:
+            dir = rand < 40 ? BTLV_EFFECT_ROTATE_THIRD : BTLV_EFFECT_ROTATE_NONE;
             break;
         }
     }
@@ -1682,7 +1711,8 @@ static s32 Studio_FindScene(const BtlScriptedRules *rules, BtlClientStudioWork *
             found = i;
         }
     }
-    if (turn == 101) {
+    // The loss ending's scene follows the battle's outcome
+    if (turn == STUDIO_TURN_LOSE) {
         for (i = 0; i < 12; i++) {
             if (outcome == rules->scenes[i].trigger) {
                 found = i;
@@ -1777,7 +1807,7 @@ static void Studio_DecideEnding(BtlClient *client, const BtlScriptedRules *rules
 static void Studio_ScoreEndScene(BtlClient *client, const BtlScriptedRules *rules, s32 scene) {
     int type = rules->scenes[scene].turn;
 
-    if (type == 100 || type == 101) {
+    if (type == STUDIO_TURN_WIN || type == STUDIO_TURN_LOSE) {
         StudioScore_AddScenePoints(client, &client->studio.score, scene);
         if (GetStudioMode(client->mainModule) == BTL_STUDIO_MODE_PLAYBACK) {
             BtlSetup *setup;
@@ -1860,7 +1890,7 @@ static BOOL Studio_PlayScene(BtlClient *client) {
         } else {
             if ((rules->scenes[client->studio.scene].messages[0][client->studio.msgStep] == -1 &&
                  rules->scenes[client->studio.scene].messages[1][client->studio.msgStep] == -1) ||
-                client->studio.msgStep == 10) {
+                client->studio.msgStep == NELEMS(rules->scenes[client->studio.scene].messages[0])) {
                 client->studio.seq = STUDIO_SCENE_SEQ_CHOICE;
             } else {
                 client->studio.seq = STUDIO_SCENE_SEQ_MSG_1;
@@ -1946,7 +1976,7 @@ static BOOL Studio_PlayScene(BtlClient *client) {
         Studio_SetSeq(&client->studio, STUDIO_SCENE_SEQ_WAIT_MSG, STUDIO_SCENE_SEQ_CHECK_TURN);
         break;
     case STUDIO_SCENE_SEQ_CHECK_TURN:
-        if (client->turnCount >= 100) {
+        if (client->turnCount >= STUDIO_TURN_WIN) {
             client->studio.seq = STUDIO_SCENE_SEQ_END;
             client->studio.stagingState = 0;
         } else {
@@ -2015,6 +2045,9 @@ static void Studio_RecordChoice(const BtlScriptedRules *rules, BtlClientStudioWo
     }
 }
 
+// The state a scene waits for, from its events: two bits, 0x10 or 0x20 in the high nibble and 0x01 or 0x02 in the
+// low one, which Studio_UpdateStaging combines. The transition table and this switch share the values, but the code
+// says nothing about what each bit shows, so they stay numbers until the movies' data names them
 static s32 Studio_GetNextState(BtlClientStudioWork *studio, s32 event) {
     s32 i;
     s32 next = 0;
@@ -2064,6 +2097,8 @@ static void Studio_SetStagingWait(BtlClientStudioWork *studio, u8 nextSeq) {
     studio->stagingNextSeq = nextSeq;
 }
 
+// The staging's steps, the transition table's next values: each starts a staging effect (an effect ID that no
+// constant names) and sets its bit of the state, 0 checks the state, 9 waits for the effect and 10 ends
 static BOOL Studio_UpdateStaging(const BtlScriptedRules *rules, BtlClient *client) {
     switch (client->studio.stagingSeq) {
     case 0:
@@ -2145,11 +2180,20 @@ static s16 StudioRules_GetTurnEvent(const BtlScriptedRules *rules, u8 turn) {
     return -1;
 }
 
+// The steps of Studio_ChangeField: pick the field to change to, fade out, load it, fade back in and end
+enum {
+    FIELD_SEQ_INIT,
+    FIELD_SEQ_FADE_OUT,
+    FIELD_SEQ_RELOAD,
+    FIELD_SEQ_FADE_IN,
+    FIELD_SEQ_END,
+};
+
 static BOOL Studio_ChangeField(BtlClient *client) {
     const BtlScriptedRules *rules = GetStudioRules(client->mainModule);
 
     switch (client->studio.seq) {
-    case 0:
+    case FIELD_SEQ_INIT:
         if (GetStudioMode(client->mainModule) != BTL_STUDIO_MODE_PLAYBACK) {
             return TRUE;
         }
@@ -2166,24 +2210,24 @@ static BOOL Studio_ChangeField(BtlClient *client) {
             return TRUE;
         }
         break;
-    case 1:
+    case FIELD_SEQ_FADE_OUT:
         if (!BtlvEffect_IsPaletteFading(BTLV_EFFECT_FADE_FIELD)) {
             BtlvEffect_SetVanish(BTLV_EFFECT_VANISH_FIELD, TRUE);
             client->studio.seq++;
         }
         break;
-    case 2:
+    case FIELD_SEQ_RELOAD:
         BtlvEffect_ReloadField(client->studio.newField);
         BtlvEffect_StartPaletteFade(BTLV_EFFECT_FADE_FIELD, 0x10, 0, 0, 0);
         client->studio.seq++;
         break;
-    case 3:
+    case FIELD_SEQ_FADE_IN:
         BtlvEffect_SetVanish(BTLV_EFFECT_VANISH_FIELD, FALSE);
         if (!BtlvEffect_IsPaletteFading(BTLV_EFFECT_FADE_FIELD)) {
             client->studio.seq++;
         }
         break;
-    case 4:
+    case FIELD_SEQ_END:
         client->studio.newField = -1;
         return TRUE;
     }
@@ -2216,9 +2260,9 @@ static BOOL Studio_ShowResult(BtlClient *client) {
         setup = GetBattleSetupParam(client->mainModule);
         rules = GetStudioRules(client->mainModule);
         if (GetBattleResultForClient(client) == BTL_RESULT_VICTORY) {
-            client->turnCount = 100;
+            client->turnCount = STUDIO_TURN_WIN;
         } else {
-            client->turnCount = 101;
+            client->turnCount = STUDIO_TURN_LOSE;
         }
         client->studio.msgId1 = Studio_GetResultMsgId(client, rules, setup);
         client->studio.seq = STUDIO_RESULT_SEQ_RESULT_EFFECT;
@@ -2272,7 +2316,7 @@ static BOOL Studio_ShowResult(BtlClient *client) {
     return FALSE;
 }
 
-static BOOL RecPlaySelectActionCore(BtlClient *client, s32 *seq, BOOL arg2) {
+static BOOL RecPlaySelectActionCore(BtlClient *client, s32 *seq, BOOL playStudioScene) {
     switch (*seq) {
     case REC_SELECT_SEQ_READ: {
         u8 count;
@@ -2341,7 +2385,7 @@ static BOOL RecPlaySelectActionCore(BtlClient *client, s32 *seq, BOOL arg2) {
             client->studio.seq = 0;
             return TRUE;
         }
-        if (client->viewCore != NULL && arg2) {
+        if (client->viewCore != NULL && playStudioScene) {
             client->studio.seq = 0;
             *seq = REC_SELECT_SEQ_STUDIO_SCENE;
         } else {
@@ -2411,13 +2455,21 @@ static void BattleClient_ShowSelectMsg(BtlClient *client, const BtlvStringParam 
     client->forceActionMsg = TRUE;
 }
 
+// The steps of BattleClient_ActionForceQuit: notify the view that the command menu is gone, pick every remaining
+// action and return them
+enum {
+    FORCE_QUIT_SEQ_NOTIFY,
+    FORCE_QUIT_SEQ_WAIT_INPUT,
+    FORCE_QUIT_SEQ_RETURN,
+};
+
 static BOOL BattleClient_ActionForceQuit(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case FORCE_QUIT_SEQ_NOTIFY:
         BattleClientCmd_ForceQuitInputNotify(client->viewCore);
         (*seq)++;
         break;
-    case 1:
+    case FORCE_QUIT_SEQ_WAIT_INPUT:
         if (BattleClientCmd_ForceQuitInputWait(client->viewCore)) {
             for (; client->procActionIdx < client->numCoverPos; client->procActionIdx++) {
                 client->procMon = PokeCon_GetClientPartyMon(client->pokeCon, client->clientId, client->procActionIdx);
@@ -2439,7 +2491,7 @@ static BOOL BattleClient_ActionForceQuit(BtlClient *client, s32 *seq) {
             (*seq)++;
         }
         break;
-    case 2:
+    case FORCE_QUIT_SEQ_RETURN:
         client->returnData = &client->actions[0];
         client->returnDataSize = client->numCoverPos * 4;
         BattleClient_SetSelActProc(client, BattleClient_ActionSelectFinish);
@@ -2572,41 +2624,51 @@ static BOOL BattleClient_ActionSelectRoot(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionTrainerHint: show the Gym Leader's hint and, on the hint it starts a superior
+// BGM for, fade the old BGM out and the new one in before the message ends
+enum {
+    TRAINER_HINT_SEQ_START,
+    TRAINER_HINT_SEQ_WAIT_BGM_FADE,
+    TRAINER_HINT_SEQ_WAIT_EFFECT,
+    TRAINER_HINT_SEQ_END,
+};
+
 static BOOL BattleClient_ActionTrainerHint(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0: {
+    case TRAINER_HINT_SEQ_START: {
         u8 clientId = GetPlayerOpponentClientID(client->mainModule, 0);
         u16 trainerId = GetClientTrainerID(client->mainModule, clientId);
         BtlvEffect_SetTrainer(GetClientTrainerClass(client->mainModule, clientId), 9, 0, 0, 0);
         BtlvEffect_Start(0x270);
         BtlvCore_StartMsgTrainer(client->viewCore, trainerId, client->hintMsgId);
-        if ((client->hintMsgId == 19 || client->hintMsgId == 20) &&
+        // The last-mon hints, 0x13 and 0x14 of sTrainerHintMsgs, are the ones that start the superior BGM
+        if ((client->hintMsgId == 0x13 || client->hintMsgId == 0x14) &&
             BtlCalc_IsGymLeaderClass(GetClientTrainerClass(client->mainModule, clientId)) &&
             !client->superiorBgmPlayed) {
             BtlvEffect_ReserveBgm(SEQ_BGM_BATTLESUPERIOR);
             if (!BtlvEffect_IsPinchBgm()) {
                 GFL_SndBGMFadeOut(8);
-                *seq = 1;
+                *seq = TRAINER_HINT_SEQ_WAIT_BGM_FADE;
                 break;
             }
         }
-        *seq = 2;
+        *seq = TRAINER_HINT_SEQ_WAIT_EFFECT;
         break;
     }
-    case 1:
+    case TRAINER_HINT_SEQ_WAIT_BGM_FADE:
         if (!GFL_SndBGMIsFading()) {
             GFL_SndBGMPlay(SEQ_BGM_BATTLESUPERIOR, 0xffff);
             client->superiorBgmPlayed = TRUE;
             (*seq)++;
         }
         break;
-    case 2:
+    case TRAINER_HINT_SEQ_WAIT_EFFECT:
         if (!BtlvEffect_IsBusy() && BtlvCore_WaitMsg(client->viewCore)) {
             BtlvEffect_Start(0x271);
             (*seq)++;
         }
         break;
-    case 3:
+    case TRAINER_HINT_SEQ_END:
         if (!BtlvEffect_IsBusy()) {
             BattleClient_SetSelActProc(client, BattleClient_ActionSelectRoot);
         }
@@ -2649,6 +2711,7 @@ static BOOL CheckTrainerHintMsg(BtlClient *client, u16 *msgId) {
                 if (client->hintShown[i] == 0) {
                     msg = sTrainerHintMsgs[i];
                     if (TrainerMsg_CheckExists(trainerId, msg, client->heapId)) {
+                        // The trainer hint messages' IDs, which sTrainerHintMsgs holds
                         switch (msg) {
                         case 0x12:
                             if (GetBattleMonStat(mon, BATTLEMON_HP) <= DivideMaxHp(mon, 2)) {
@@ -2737,7 +2800,7 @@ static BOOL BattleClient_ActionSelectFight(BtlClient *client, s32 *seq) {
                 if (BattleAction_GetMoveInfoFlag(procAction)) {
                     client->moveInfoPos = pos;
                     client->moveInfoIdx = BattleMon_FindMoveSlot(mon, procAction->bits.move);
-                    if (client->moveInfoIdx != 4) {
+                    if (client->moveInfoIdx != MOVE_SLOT_NONE) {
                         BattleClient_SetSelActProc(client, BattleClient_ActionViewMoveInfo);
                         return FALSE;
                     }
@@ -2817,23 +2880,30 @@ static void SetupRotationSelectParam(BtlClient *client, BtlvSelectTargetParam *p
     }
 }
 
+// The steps of BattleClient_ActionViewMoveInfo: show the move's info, then wait for the screen to be left or quit
+enum {
+    MOVE_INFO_SEQ_START,
+    MOVE_INFO_SEQ_WAIT,
+    MOVE_INFO_SEQ_WAIT_QUIT,
+};
+
 static BOOL BattleClient_ActionViewMoveInfo(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case MOVE_INFO_SEQ_START:
         BattleClientCmd_StartMoveInfoView(client->viewCore, client->moveInfoPos, client->moveInfoIdx);
         (*seq)++;
         break;
-    case 1:
+    case MOVE_INFO_SEQ_WAIT:
         if (CheckActionSelectForceQuit(client, NULL)) {
             BattleClientCmd_QuitPokeSelect(client->viewCore);
-            *seq = 2;
+            *seq = MOVE_INFO_SEQ_WAIT_QUIT;
             return FALSE;
         }
         if (BattleClientCmd_WaitPokeSelect(client->viewCore)) {
             BattleClient_SetSelActProc(client, BattleClient_ActionSelectFight);
         }
         break;
-    case 2:
+    case MOVE_INFO_SEQ_WAIT_QUIT:
         if (BattleClientCmd_WaitPokeSelect(client->viewCore)) {
             BattleClient_SetSelActProc(client, BattleClient_ActionForceQuit);
         }
@@ -2842,13 +2912,20 @@ static BOOL BattleClient_ActionViewMoveInfo(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionSwitchPokemon: show the party list, then wait for it to be left or quit
+enum {
+    POKE_LIST_SEQ_START,
+    POKE_LIST_SEQ_WAIT,
+    POKE_LIST_SEQ_WAIT_QUIT,
+};
+
 static BOOL BattleClient_ActionSwitchPokemon(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0: {
-        u16 arg3;
+    case POKE_LIST_SEQ_START: {
+        u16 trapAbility;
         u8 monId;
         u8 canCancel = FALSE;
-        u8 result = CanMonSwitch(client, client->procMon, &monId, &arg3);
+        u8 result = CanMonSwitch(client, client->procMon, &monId, &trapAbility);
         if (result != TRAP_NONE || monId == GetMonID(client->procMon)) {
             canCancel = TRUE;
         }
@@ -2857,10 +2934,10 @@ static BOOL BattleClient_ActionSwitchPokemon(BtlClient *client, s32 *seq) {
         (*seq)++;
         break;
     }
-    case 1:
+    case POKE_LIST_SEQ_WAIT:
         if (CheckActionSelectForceQuit(client, NULL)) {
             BattleClientCmd_QuitPokeSelect(client->viewCore);
-            *seq = 2;
+            *seq = POKE_LIST_SEQ_WAIT_QUIT;
             return FALSE;
         }
         if (BattleClientCmd_WaitPokeSelect(client->viewCore)) {
@@ -2875,7 +2952,7 @@ static BOOL BattleClient_ActionSwitchPokemon(BtlClient *client, s32 *seq) {
             BattleClient_SetSelActProc(client, BattleClient_ActionSelectRoot);
         }
         break;
-    case 2:
+    case POKE_LIST_SEQ_WAIT_QUIT:
         if (BattleClientCmd_WaitPokeSelect(client->viewCore)) {
             BattleClient_SetSelActProc(client, BattleClient_ActionForceQuit);
         }
@@ -2884,9 +2961,16 @@ static BOOL BattleClient_ActionSwitchPokemon(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionSelectItem: show the bag, then wait for it to be left or quit
+enum {
+    ITEM_SEQ_START,
+    ITEM_SEQ_WAIT,
+    ITEM_SEQ_WAIT_QUIT,
+};
+
 static BOOL BattleClient_ActionSelectItem(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0: {
+    case ITEM_SEQ_START: {
         u8 cost = shooterWork_GetTotalCost(client);
         u8 isFirst = (client->procActionIdx == client->firstActionIdx);
         u8 hiding = IsPokeBallTargetHiding(client);
@@ -2895,16 +2979,16 @@ static BOOL BattleClient_ActionSelectItem(BtlClient *client, s32 *seq) {
         (*seq)++;
         break;
     }
-    case 1:
+    case ITEM_SEQ_WAIT:
         if (CheckActionSelectForceQuit(client, NULL)) {
             BtlvCore_QuitItemSelect(client->viewCore);
-            *seq = 2;
+            *seq = ITEM_SEQ_WAIT_QUIT;
             return FALSE;
         }
         if (BtlvCore_WaitItemSelect(client->viewCore)) {
             u16 item = BtlvCore_GetSelectedItem(client->viewCore);
             u16 target = BtlvCore_GetSelectedPartyIndex(client->viewCore);
-            if (item != 0 && target != 6) {
+            if (item != 0 && target != BPLIST_PARTY_CANCEL) {
                 u8 cost = BtlvCore_GetItemCost(client->viewCore);
                 u32 param = BtlvCore_GetSelectedMoveSlot(client->viewCore);
                 if (client->shooterEnergy >= cost) {
@@ -2916,7 +3000,7 @@ static BOOL BattleClient_ActionSelectItem(BtlClient *client, s32 *seq) {
                 shooterWork_SetCost(client, client->procActionIdx, cost);
                 BattleAction_SetItemParam(client->procAction, item, target, param);
                 BtlvCore_SaveBagCursor(client->viewCore);
-                if (ItemGetParam(item, ITEM_PARAM_KIND) == 4) {
+                if (ItemGetParam(item, ITEM_PARAM_KIND) == ITEM_KIND_BALL) {
                     client->escapeSelected = TRUE;
                 }
                 selItemWork_Reserve(client, client->procActionIdx, item);
@@ -2926,7 +3010,7 @@ static BOOL BattleClient_ActionSelectItem(BtlClient *client, s32 *seq) {
             }
         }
         break;
-    case 2:
+    case ITEM_SEQ_WAIT_QUIT:
         if (BtlvCore_WaitItemSelect(client->viewCore)) {
             BattleClient_SetSelActProc(client, BattleClient_ActionForceQuit);
         }
@@ -2935,23 +3019,30 @@ static BOOL BattleClient_ActionSelectItem(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionViewScript: show the movie's script, then wait for it to be left or quit
+enum {
+    SCRIPT_SEQ_START,
+    SCRIPT_SEQ_WAIT,
+    SCRIPT_SEQ_WAIT_QUIT,
+};
+
 static BOOL BattleClient_ActionViewScript(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case SCRIPT_SEQ_START:
         BtlvCore_StartScenario(client->viewCore, client->turnCount);
         (*seq)++;
         break;
-    case 1:
+    case SCRIPT_SEQ_WAIT:
         if (CheckActionSelectForceQuit(client, NULL)) {
             BtlvCore_QuitScenario(client->viewCore);
-            *seq = 2;
+            *seq = SCRIPT_SEQ_WAIT_QUIT;
             return FALSE;
         }
         if (BtlvCore_WaitScenario(client->viewCore)) {
             BattleClient_SetSelActProc(client, BattleClient_ActionSelectRoot);
         }
         break;
-    case 2:
+    case SCRIPT_SEQ_WAIT_QUIT:
         if (BtlvCore_WaitScenario(client->viewCore)) {
             BattleClient_SetSelActProc(client, BattleClient_ActionSelectRoot);
         }
@@ -2960,13 +3051,19 @@ static BOOL BattleClient_ActionViewScript(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionSelectStudioChoice: show the scene's choices, then wait for one
+enum {
+    CHOICE_SEQ_START,
+    CHOICE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ActionSelectStudioChoice(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case CHOICE_SEQ_START:
         BtlvCore_StartChoice(client->viewCore);
         (*seq)++;
         break;
-    case 1:
+    case CHOICE_SEQ_WAIT:
         if (BtlvCore_WaitChoice(client->viewCore)) {
             return TRUE;
         }
@@ -3087,13 +3184,19 @@ static BOOL BattleClient_ActionSelectEscape(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionSelectAutoRest: reset the screen, then pick the next action or finish
+enum {
+    AUTO_REST_SEQ_RESET,
+    AUTO_REST_SEQ_NEXT,
+};
+
 static BOOL BattleClient_ActionSelectAutoRest(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case AUTO_REST_SEQ_RESET:
         BtlvCore_ResetScreen(client->viewCore);
         (*seq)++;
         break;
-    case 1:
+    case AUTO_REST_SEQ_NEXT:
         if (BtlvCore_IsScreenIdle(client->viewCore)) {
             client->procActionIdx++;
             if (client->procActionIdx < client->numCoverPos) {
@@ -3123,9 +3226,17 @@ static BOOL BattleClient_ActionSelectAutoRest(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ActionSelectFinish: give the reserved items back, wait for the communication's
+// message and the end of the effects, then hide the timer
+enum {
+    FINISH_SEQ_INIT,
+    FINISH_SEQ_WAIT_MSG,
+    FINISH_SEQ_WAIT_EFFECT,
+};
+
 static BOOL BattleClient_ActionSelectFinish(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case FINISH_SEQ_INIT:
         selItemWork_Quit(client);
         if (GetCommMode(client->mainModule)) {
             client->waitMsgShown = TRUE;
@@ -3135,12 +3246,12 @@ static BOOL BattleClient_ActionSelectFinish(BtlClient *client, s32 *seq) {
             *seq += 2;
         }
         break;
-    case 1:
+    case FINISH_SEQ_WAIT_MSG:
         if (BtlvCore_IsWaitMsgDone(client->viewCore)) {
             (*seq)++;
         }
         break;
-    case 2:
+    case FINISH_SEQ_WAIT_EFFECT:
         if (!BtlvEffect_IsBusy()) {
             BattleClient_HideCmdLimitTimer(client);
             (*seq)++;
@@ -3342,14 +3453,15 @@ static BOOL IsUnselectableMove(BtlClient *client, BattleMon *mon, u16 move, Btlv
     return FALSE;
 }
 
+// Marks each of the mon's moves selectable, and returns the first selectable slot, or MOVE_SLOT_NONE
 static u8 StoreSelectableMoveFlag(BtlClient *client, BattleMon *mon, u8 *selectable) {
     u8 moveCount = GetBattleMonMoveCount(mon);
-    u8 first = 4;
+    u8 first = MOVE_SLOT_NONE;
     u8 i;
     for (i = 0; i < moveCount; i++) {
         if (GetMovePP(mon, i) != 0) {
             selectable[i] = !IsUnselectableMove(client, mon, MoveGetID(mon, i), NULL);
-            if (first == 4 && selectable[i]) {
+            if (first == MOVE_SLOT_NONE && selectable[i]) {
                 first = i;
             }
         } else {
@@ -3518,7 +3630,8 @@ static void ReserveAISwitch(BtlClient *client, u8 index, u8 slot) {
 }
 
 static BOOL AISwitchChecks(BtlClient *client, BattleMon *mon, u8 index, u8 *slot) {
-    u8 switchTo = 6;
+    // The party slot to switch to, or PARTY_SIZE before a check picks one
+    u8 switchTo = PARTY_SIZE;
     u8 trapMonId;
     u16 trapAbility;
     u8 slots[6];
@@ -3558,7 +3671,7 @@ static BOOL AISwitchChecks(BtlClient *client, BattleMon *mon, u8 index, u8 *slot
     if (!shouldSwitch) {
         return FALSE;
     }
-    if (switchTo == 6) {
+    if (switchTo == PARTY_SIZE) {
         u32 count = GetNumBattleReadyPartyMons(client, slots);
         u32 i;
         PickBestMonToSwitchInto(client, slots, count, target);
@@ -3569,7 +3682,7 @@ static BOOL AISwitchChecks(BtlClient *client, BattleMon *mon, u8 index, u8 *slot
             }
         }
     }
-    if (switchTo == 6) {
+    if (switchTo == PARTY_SIZE) {
         return FALSE;
     }
     ReserveAISwitch(client, index, switchTo);
@@ -3938,7 +4051,7 @@ static BOOL AISelectAction(BtlClient *client, s32 *seq) {
             *seq = AI_SELECT_SEQ_NEXT;
         }
         GetBattleMonMoveCount(client->procMon);
-        if (StoreSelectableMoveFlag(client, client->procMon, usableMoves) != 4) {
+        if (StoreSelectableMoveFlag(client, client->procMon, usableMoves) != MOVE_SLOT_NONE) {
             TrAI_Setup(client->aiVM, usableMoves,
                        MonIDToBattlePos(client->mainModule, client->pokeCon, GetMonID(client->procMon)));
             *seq = AI_SELECT_SEQ_THINK;
@@ -3952,7 +4065,7 @@ static BOOL AISelectAction(BtlClient *client, s32 *seq) {
             break;
         }
         moveIdx = TrAI_GetChosenMove(client->aiVM);
-        if (moveIdx != 4) {
+        if (moveIdx != MOVE_SLOT_NONE) {
             target = TrAI_GetChosenTarget(client->aiVM);
             debug = GetStudioWork(client->mainModule);
             if (debug != NULL && debug->aiMoveIndex >= 0) {
@@ -4025,19 +4138,19 @@ static void PickBestMonToSwitchInto(BtlClient *client, u8 *list, u8 count, Battl
                             basePower = 60;
                         }
                         switch (BtlCalc_GetTypePairEffectiveness(moveType, types)) {
-                        case 5:
+                        case TYPE_EFFECTIVENESS_QUADRUPLE:
                             basePower *= 4;
                             break;
-                        case 4:
+                        case TYPE_EFFECTIVENESS_DOUBLE:
                             basePower *= 2;
                             break;
-                        case 2:
+                        case TYPE_EFFECTIVENESS_HALF:
                             basePower /= 2;
                             break;
-                        case 1:
+                        case TYPE_EFFECTIVENESS_QUARTER:
                             basePower /= 4;
                             break;
-                        case 0:
+                        case TYPE_EFFECTIVENESS_IMMUNE:
                             basePower = 0;
                             break;
                         }
@@ -4120,18 +4233,25 @@ static u8 CollectOwnChangePositions(BtlClient *client, u8 *positions) {
     return count;
 }
 
+// The steps of BattleClient_PlayerConfirmUseNextPoke: ask whether to send the next Pokemon out, then wait for the
+// answer
+enum {
+    NEXT_POKE_SEQ_ASK,
+    NEXT_POKE_SEQ_WAIT_ANSWER,
+};
+
 static BOOL BattleClient_PlayerConfirmUseNextPoke(BtlClient *client, s32 *seq) {
     u32 result;
     u8 yes;
 
     switch (*seq) {
-    case 0:
+    case NEXT_POKE_SEQ_ASK:
         Btlv_StringParam_Setup(&client->strParam, BTLV_STR_UI, 5);
         Btlv_StringParam_Setup(&client->strParam2, BTLV_STR_UI, 1);
         BtlvCore_ShowYesNo(client->viewCore, &client->strParam, &client->strParam2, 0);
         (*seq)++;
         break;
-    case 1:
+    case NEXT_POKE_SEQ_WAIT_ANSWER:
         if (BtlvCore_PollYesNo(client->viewCore, &result)) {
             yes = FALSE;
             if (result != 0) {
@@ -4214,7 +4334,7 @@ static BOOL AISelectChangePoke(BtlClient *client, s32 *seq) {
 }
 
 static BOOL BattleClient_RecPlaySelectChangePoke(BtlClient *client, s32 *seq) {
-    return RecPlaySelectActionCore(client, seq, 0);
+    return RecPlaySelectActionCore(client, seq, FALSE);
 }
 
 // The player's choice of the mons to send out
@@ -4417,6 +4537,15 @@ static BOOL BattleClient_RecPlayExitCommBattle(BtlClient *client, s32 *seq) {
     return TRUE;
 }
 
+// The steps of BattleClient_ExitCommBattle: show how the battle ended, wait for the message, and on a defeat or a
+// draw wait for the BGM to fade out
+enum {
+    EXIT_COMM_SEQ_SHOW_RESULT,
+    EXIT_COMM_SEQ_WAIT_WIN_MSG,
+    EXIT_COMM_SEQ_WAIT_OTHER_MSG,
+    EXIT_COMM_SEQ_WAIT_BGM_FADE,
+};
+
 static BOOL BattleClient_ExitCommBattle(BtlClient *client, s32 *seq) {
     u32 name;
     u32 result;
@@ -4424,7 +4553,7 @@ static BOOL BattleClient_ExitCommBattle(BtlClient *client, s32 *seq) {
     u16 msg;
 
     switch (*seq) {
-    case 0:
+    case EXIT_COMM_SEQ_SHOW_RESULT:
         if (client->recCanceled) {
             return TRUE;
         }
@@ -4451,7 +4580,7 @@ static BOOL BattleClient_ExitCommBattle(BtlClient *client, s32 *seq) {
             Btlv_StringParam_AddArg(&client->strParam, GetPlayerOpponentClientID(client->mainModule, 1));
         }
         BtlvCore_StartMsg(client->viewCore, &client->strParam);
-        if (result == 1) {
+        if (result == BTL_RESULT_VICTORY) {
             GFL_SndBGMPlay(GetWinBGM(client->mainModule), 0xffff);
             (*seq)++;
         } else {
@@ -4459,17 +4588,17 @@ static BOOL BattleClient_ExitCommBattle(BtlClient *client, s32 *seq) {
             *seq += 2;
         }
         break;
-    case 1:
+    case EXIT_COMM_SEQ_WAIT_WIN_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
         break;
-    case 2:
+    case EXIT_COMM_SEQ_WAIT_OTHER_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             (*seq)++;
         }
         break;
-    case 3:
+    case EXIT_COMM_SEQ_WAIT_BGM_FADE:
         if (!GFL_SndBGMIsFading()) {
             GFL_SndBGMStopImmediate();
             return TRUE;
@@ -4485,12 +4614,12 @@ static u32 GetBattleResultForClient(BtlClient *client) {
 
     BtlAdapter_GetRecvData(client->adapter, (const void **)&data);
     switch (data[1]) {
-    case 0:
+    case BTL_RESULT_DEFEAT:
         if (!IsAllyClientID(data[0], client->clientId)) {
             return BTL_RESULT_VICTORY;
         }
         break;
-    case 1:
+    case BTL_RESULT_VICTORY:
         if (!IsAllyClientID(data[0], client->clientId)) {
             return BTL_RESULT_DEFEAT;
         }
@@ -4545,12 +4674,12 @@ static BOOL BattleClient_ExitTrainerBattle(BtlClient *client, s32 *seq) {
         } else if (GetStudioMode(client->mainModule) == BTL_STUDIO_MODE_PLAYBACK) {
             result = GetBattleResultForClient(client);
             StudioScore_SetTurnPoints(client, &client->studio.score);
-            if (result == 1) {
+            if (result == BTL_RESULT_VICTORY) {
                 client->studio.seq = 0;
-                client->turnCount = 100;
+                client->turnCount = STUDIO_TURN_WIN;
             } else {
                 client->studio.seq = 0;
-                client->turnCount = 101;
+                client->turnCount = STUDIO_TURN_LOSE;
             }
             *seq = EXIT_TRAINER_SEQ_STUDIO_SCENE;
             Studio_PlayEndingBgm(client->mainModule);
@@ -4697,11 +4826,21 @@ static BOOL BattleClient_RecPlayExitFacilityBattle(BtlClient *client, s32 *seq) 
     return TRUE;
 }
 
+// The steps of BattleClient_ExitFacilityBattle: bring each opponent on with their win or lose message
+enum {
+    EXIT_FACILITY_SEQ_FIRST_TRAINER,
+    EXIT_FACILITY_SEQ_FIRST_MSG,
+    EXIT_FACILITY_SEQ_WAIT_FIRST_MSG,
+    EXIT_FACILITY_SEQ_SECOND_TRAINER,
+    EXIT_FACILITY_SEQ_SECOND_MSG,
+    EXIT_FACILITY_SEQ_WAIT_SECOND_MSG,
+};
+
 static BOOL BattleClient_ExitFacilityBattle(BtlClient *client, s32 *seq) {
     u32 result;
 
     switch (*seq) {
-    case 0:
+    case EXIT_FACILITY_SEQ_FIRST_TRAINER:
         if (client->recCanceled) {
             return TRUE;
         }
@@ -4717,26 +4856,26 @@ static BOOL BattleClient_ExitFacilityBattle(BtlClient *client, s32 *seq) {
             BtlvMcss_SetAnimation(BtlvEffect_GetMcss(), 9, 1);
             BtlvEffect_Start(0x270);
             ShowTrainerWinLoseMsg(client, result, 0);
-            *seq = 1;
+            *seq = EXIT_FACILITY_SEQ_FIRST_MSG;
             break;
         }
         return TRUE;
-    case 1:
+    case EXIT_FACILITY_SEQ_FIRST_MSG:
         if (!BtlvEffect_IsBusy()) {
             BtlvCore_StartMadeMsg(client->viewCore);
-            *seq = 2;
+            *seq = EXIT_FACILITY_SEQ_WAIT_FIRST_MSG;
         }
         break;
-    case 2:
+    case EXIT_FACILITY_SEQ_WAIT_FIRST_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             if (GetPlayerOpponentClientID(client->mainModule, 0) == GetPlayerOpponentClientID(client->mainModule, 1)) {
                 return TRUE;
             }
             BtlvEffect_Start(0x271);
-            *seq = 3;
+            *seq = EXIT_FACILITY_SEQ_SECOND_TRAINER;
         }
         break;
-    case 3:
+    case EXIT_FACILITY_SEQ_SECOND_TRAINER:
         if (!BtlvEffect_IsBusy()) {
             result = GetBattleResultForClient(client);
             BtlvEffect_SetTrainer(
@@ -4745,16 +4884,16 @@ static BOOL BattleClient_ExitFacilityBattle(BtlClient *client, s32 *seq) {
             BtlvMcss_SetAnimation(BtlvEffect_GetMcss(), 9, 1);
             BtlvEffect_Start(0x270);
             ShowTrainerWinLoseMsg(client, result, 1);
-            *seq = 4;
+            *seq = EXIT_FACILITY_SEQ_SECOND_MSG;
         }
         break;
-    case 4:
+    case EXIT_FACILITY_SEQ_SECOND_MSG:
         if (!BtlvEffect_IsBusy()) {
             BtlvCore_StartMadeMsg(client->viewCore);
-            *seq = 5;
+            *seq = EXIT_FACILITY_SEQ_WAIT_SECOND_MSG;
         }
         break;
-    case 5:
+    case EXIT_FACILITY_SEQ_WAIT_SECOND_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -4785,12 +4924,18 @@ static void ShowTrainerWinLoseMsg(BtlClient *client, u32 result, u8 which) {
     }
 }
 
+// The steps of BattleClient_ExitWildBattleWin: show the bonus money, then wait for its message
+enum {
+    WILD_WIN_SEQ_BONUS_MONEY,
+    WILD_WIN_SEQ_WAIT_MSG,
+};
+
 static BOOL BattleClient_ExitWildBattleWin(BtlClient *client, s32 *seq) {
     u32 value;
     u8 playerId;
 
     switch (*seq) {
-    case 0:
+    case WILD_WIN_SEQ_BONUS_MONEY:
         if (!BtlSetup_IsBattleType(client->mainModule, BTL_SETUP_FLAG_200)) {
             value = GetBonusMoney(client->mainModule);
             if (value != 0) {
@@ -4803,7 +4948,7 @@ static BOOL BattleClient_ExitWildBattleWin(BtlClient *client, s32 *seq) {
         }
         (*seq)++;
         // fallthrough
-    case 1:
+    case WILD_WIN_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -4812,17 +4957,26 @@ static BOOL BattleClient_ExitWildBattleWin(BtlClient *client, s32 *seq) {
     return FALSE;
 }
 
+// The steps of BattleClient_ExitWildBattleLose: show that the player lost, the money it cost and the blackout,
+// then wait for the last message
+enum {
+    WILD_LOSE_SEQ_LOSE_MSG,
+    WILD_LOSE_SEQ_MONEY_MSG,
+    WILD_LOSE_SEQ_BLACKOUT_MSG,
+    WILD_LOSE_SEQ_WAIT_MSG,
+};
+
 static BOOL BattleClient_ExitWildBattleLose(BtlClient *client, s32 *seq) {
     u32 value;
 
     switch (*seq) {
-    case 0:
+    case WILD_LOSE_SEQ_LOSE_MSG:
         Btlv_StringParam_Setup(&client->strParam, BTLV_STR_STD, 0x36);
         Btlv_StringParam_AddArg(&client->strParam, client->clientId);
         BtlvCore_StartMsg(client->viewCore, &client->strParam);
         (*seq)++;
         break;
-    case 1:
+    case WILD_LOSE_SEQ_MONEY_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             value = CalcLossMoney(client->mainModule);
             if (value != 0) {
@@ -4834,7 +4988,7 @@ static BOOL BattleClient_ExitWildBattleLose(BtlClient *client, s32 *seq) {
             (*seq)++;
         }
         break;
-    case 2:
+    case WILD_LOSE_SEQ_BLACKOUT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             Btlv_StringParam_Setup(&client->strParam, BTLV_STR_STD, 0x39);
             Btlv_StringParam_AddArg(&client->strParam, client->clientId);
@@ -4842,7 +4996,7 @@ static BOOL BattleClient_ExitWildBattleLose(BtlClient *client, s32 *seq) {
             (*seq)++;
         }
         break;
-    case 3:
+    case WILD_LOSE_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             (*seq)++;
         }
@@ -4967,19 +5121,26 @@ static const struct {
 };
 
 // The effort values that the effort value command raises, in its arguments' order
+// The steps of BattleClient_ShowTimeUpMsg: show the timeout, then wait for its message and end
+enum {
+    TIME_UP_SEQ_SHOW_MSG,
+    TIME_UP_SEQ_WAIT_MSG,
+    TIME_UP_SEQ_END,
+};
+
 static BOOL BattleClient_ShowTimeUpMsg(BtlClient *client, s32 *seq) {
     switch (*seq) {
-    case 0:
+    case TIME_UP_SEQ_SHOW_MSG:
         Btlv_StringParam_Setup(&client->strParam, BTLV_STR_STD, 0xb7);
         BtlvCore_StartMsg(client->viewCore, &client->strParam);
         (*seq)++;
         break;
-    case 1:
+    case TIME_UP_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             (*seq)++;
         }
         break;
-    case 2:
+    case TIME_UP_SEQ_END:
         return TRUE;
     }
     return FALSE;
@@ -5056,11 +5217,17 @@ static BOOL BattleClient_ServerCmdLoop(BtlClient *client, s32 *seq) {
     }
 }
 
+// The steps of BattleClient_ScRecallMsg: show the recall message, then wait for it
+enum {
+    RECALL_MSG_SEQ_START,
+    RECALL_MSG_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScRecallMsg(BtlClient *client, s32 *seq, const u32 *args) {
     BOOL withName;
 
     switch (*seq) {
-    case 0:
+    case RECALL_MSG_SEQ_START:
         Btlv_StringParam_Setup(&client->strParam, BTLV_STR_STD, BattleClient_GetRecallMsg(client, args[0], &withName));
         if (withName) {
             Btlv_StringParam_AddArg(&client->strParam, args[0]);
@@ -5069,7 +5236,7 @@ static BOOL BattleClient_ScRecallMsg(BtlClient *client, s32 *seq, const u32 *arg
         BtlvCore_StartMsg(client->viewCore, &client->strParam);
         (*seq)++;
         break;
-    case 1:
+    case RECALL_MSG_SEQ_WAIT:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -5108,13 +5275,19 @@ static u16 BattleClient_GetRecallMsg(BtlClient *client, u8 clientId, BOOL *withN
     }
 }
 
+// The steps of BattleClient_ScRecall: start the switch-out, then wait for it
+enum {
+    RECALL_SEQ_START,
+    RECALL_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScRecall(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case RECALL_SEQ_START:
         BtlvCore_StartSwitchOut(client->viewCore, BattlePosToViewPos(client->mainModule, args[0]), args[1]);
         (*seq)++;
         break;
-    case 1:
+    case RECALL_SEQ_WAIT:
         if (BtlvCore_WaitSwitchOut(client->viewCore)) {
             return TRUE;
         }
@@ -5123,13 +5296,21 @@ static BOOL BattleClient_ScRecall(BtlClient *client, s32 *seq, const u32 *args) 
     return FALSE;
 }
 
+// The steps of BattleClient_ScSendOut: show the send-out message, wait for it, then start the switch-in and wait
+// for it
+enum {
+    SEND_OUT_SEQ_SHOW_MSG,
+    SEND_OUT_SEQ_WAIT_MSG,
+    SEND_OUT_SEQ_WAIT_SWITCH_IN,
+};
+
 static BOOL BattleClient_ScSendOut(BtlClient *client, s32 *seq, const u32 *args) {
     u8 clientId = args[0];
     u8 slot = args[1];
     u8 showMsg = args[3];
 
     switch (*seq) {
-    case 0:
+    case SEND_OUT_SEQ_SHOW_MSG:
         if (showMsg) {
             u8 monId = GetMonID(GetClientMonData(client->pokeCon, clientId, slot));
 
@@ -5158,14 +5339,14 @@ static BOOL BattleClient_ScSendOut(BtlClient *client, s32 *seq, const u32 *args)
         }
         (*seq)++;
         break;
-    case 1:
+    case SEND_OUT_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             BtlvCore_StartSwitchIn(client->viewCore, GetClientBattlePos(client->mainModule, clientId, slot), clientId,
                                    slot);
             (*seq)++;
         }
         break;
-    case 2:
+    case SEND_OUT_SEQ_WAIT_SWITCH_IN:
         if (BtlvCore_WaitSwitchIn(client->viewCore)) {
             BattleClient_SaveFrontMonHp(client);
             if (clientId == GetPlayerClientID(client->mainModule)) {
@@ -5205,16 +5386,22 @@ static u16 BattleClient_GetPlayerSendOutMsg(BtlClient *client) {
     return 0xb;
 }
 
+// The steps of BattleClient_ScMsgStd: start the message, then wait for it
+enum {
+    MSG_STD_SEQ_START,
+    MSG_STD_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScMsgStd(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MSG_STD_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
         BtlvCore_StartMsgStd(client->viewCore, args[0], &args[1]);
         (*seq)++;
         break;
-    case 1:
+    case MSG_STD_SEQ_WAIT:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -5223,16 +5410,22 @@ static BOOL BattleClient_ScMsgStd(BtlClient *client, s32 *seq, const u32 *args) 
     return FALSE;
 }
 
+// The steps of BattleClient_ScMsgStdSE: start the message, then play its sound effect as it ends and wait for it
+enum {
+    MSG_STD_SE_SEQ_START,
+    MSG_STD_SE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScMsgStdSE(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MSG_STD_SE_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
         BtlvCore_StartMsgStd(client->viewCore, args[0], &args[2]);
         (*seq)++;
         break;
-    case 1:
+    case MSG_STD_SE_SEQ_WAIT:
         if (BtlvCore_IsMsgJustDone(client->viewCore)) {
             GFL_SndSEPlay(args[1]);
         }
@@ -5244,16 +5437,22 @@ static BOOL BattleClient_ScMsgStdSE(BtlClient *client, s32 *seq, const u32 *args
     return FALSE;
 }
 
+// The steps of BattleClient_ScMsgSet: start the message, then wait for it
+enum {
+    MSG_SET_SEQ_START,
+    MSG_SET_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScMsgSet(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MSG_SET_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
         BtlvCore_StartMsgSet(client->viewCore, args[0], &args[1]);
         (*seq)++;
         break;
-    case 1:
+    case MSG_SET_SEQ_WAIT:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -5262,16 +5461,22 @@ static BOOL BattleClient_ScMsgSet(BtlClient *client, s32 *seq, const u32 *args) 
     return FALSE;
 }
 
+// The steps of BattleClient_ScMsgSetSE: start the message, then play its sound effect as it ends and wait for it
+enum {
+    MSG_SET_SE_SEQ_START,
+    MSG_SET_SE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScMsgSetSE(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MSG_SET_SE_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
         BtlvCore_StartMsgSet(client->viewCore, args[0], &args[2]);
         (*seq)++;
         break;
-    case 1:
+    case MSG_SET_SE_SEQ_WAIT:
         if (BtlvCore_IsMsgJustDone(client->viewCore)) {
             GFL_SndSEPlay(args[1]);
         }
@@ -5283,16 +5488,22 @@ static BOOL BattleClient_ScMsgSetSE(BtlClient *client, s32 *seq, const u32 *args
     return FALSE;
 }
 
+// The steps of BattleClient_ScMoveMsg: start the move's message, then wait for it
+enum {
+    MOVE_MSG_SEQ_START,
+    MOVE_MSG_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScMoveMsg(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MOVE_MSG_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
         BtlvCore_StartMsgMove(client->viewCore, args[0], args[1]);
         (*seq)++;
         break;
-    case 1:
+    case MOVE_MSG_SEQ_WAIT:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -5314,9 +5525,15 @@ static s32 BattleClient_GetMoveAnimType(BtlClient *client, u16 move, u8 pos) {
     }
 }
 
+// The steps of BattleClient_ScMoveAnim: start the move's animation, then wait for it
+enum {
+    MOVE_ANIM_SEQ_START,
+    MOVE_ANIM_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScMoveAnim(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MOVE_ANIM_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
@@ -5324,20 +5541,20 @@ static BOOL BattleClient_ScMoveAnim(BtlClient *client, s32 *seq, const u32 *args
             u16 move;
             u8 attackerPos;
             u8 targetPos;
-            u8 arg3;
+            u8 variant;
             s32 animType;
 
             attackerPos = args[0];
             targetPos = args[1];
             move = args[2];
-            arg3 = args[3];
+            variant = args[3];
             animType = BattleClient_GetMoveAnimType(client, move, attackerPos);
-            BtlvCore_StartMoveEffect(client->viewCore, attackerPos, targetPos, move, animType, arg3, 0);
+            BtlvCore_StartMoveEffect(client->viewCore, attackerPos, targetPos, move, animType, variant, 0);
             (*seq)++;
             break;
         }
         return TRUE;
-    case 1:
+    case MOVE_ANIM_SEQ_WAIT:
         if (BtlvCore_WaitMoveEffect(client->viewCore)) {
             return TRUE;
         }
@@ -5346,29 +5563,41 @@ static BOOL BattleClient_ScMoveAnim(BtlClient *client, s32 *seq, const u32 *args
     return FALSE;
 }
 
+// The steps of BattleClient_ScSetMonVisible: show or hide the Pokemon, then wait for the effect
+enum {
+    MON_VISIBLE_SEQ_START,
+    MON_VISIBLE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScSetMonVisible(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case MON_VISIBLE_SEQ_START: {
         u8 pos = MonIDToViewPos(client->mainModule, client->pokeCon, args[0]);
 
         BtlvCore_SetMonVisible(client->viewCore, pos, args[1] ? TRUE : FALSE);
         (*seq)++;
         break;
     }
-    case 1:
+    case MON_VISIBLE_SEQ_WAIT:
         return !BtlvEffect_IsBusy();
     }
     return FALSE;
 }
 
+// The steps of BattleClient_ScDamage: start the damage, then wait for it
+enum {
+    DAMAGE_SEQ_START,
+    DAMAGE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScDamage(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case DAMAGE_SEQ_START:
         BtlvCore_StartDamage(client->viewCore, args[2], MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]),
                              args[1]);
         (*seq)++;
         break;
-    case 1:
+    case DAMAGE_SEQ_WAIT:
         if (BtlvCore_WaitDamage(client->viewCore)) {
             return TRUE;
         }
@@ -5377,23 +5606,29 @@ static BOOL BattleClient_ScDamage(BtlClient *client, s32 *seq, const u32 *args) 
     return FALSE;
 }
 
+// The steps of BattleClient_ScDamagePlural: start the damage to the Pokemon, then wait for it
+enum {
+    DAMAGE_PLURAL_SEQ_START,
+    DAMAGE_PLURAL_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScDamagePlural(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case DAMAGE_PLURAL_SEQ_START: {
         u16 count = args[0];
         u32 type = args[1];
-        u16 arg2 = args[2];
+        u16 move = args[2];
         u8 monIds[6];
         u8 i;
 
         for (i = 0; i < count; i++) {
             monIds[i] = BtlServerCmdQueue_ReadByte(client->cmdQueue);
         }
-        BtlvCore_StartMultiDamage(client->viewCore, count, type, monIds, arg2);
+        BtlvCore_StartMultiDamage(client->viewCore, count, type, monIds, move);
         (*seq)++;
         break;
     }
-    case 1:
+    case DAMAGE_PLURAL_SEQ_WAIT:
         if (BtlvCore_WaitMultiDamage(client->viewCore)) {
             return TRUE;
         }
@@ -5402,19 +5637,26 @@ static BOOL BattleClient_ScDamagePlural(BtlClient *client, s32 *seq, const u32 *
     return FALSE;
 }
 
+// The steps of BattleClient_ScOneHitKO: empty the HP gauge, then show the message and wait for it
+enum {
+    ONE_HIT_KO_SEQ_START,
+    ONE_HIT_KO_SEQ_MSG,
+    ONE_HIT_KO_SEQ_WAIT_MSG,
+};
+
 static BOOL BattleClient_ScOneHitKO(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case ONE_HIT_KO_SEQ_START:
         BtlvCore_StartGaugeHP(client->viewCore, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
         (*seq)++;
         break;
-    case 1:
+    case ONE_HIT_KO_SEQ_MSG:
         if (BtlvCore_WaitGaugeHP(client->viewCore)) {
             BtlvCore_StartMsgStd(client->viewCore, 0x61, args);
             (*seq)++;
         }
         break;
-    case 2:
+    case ONE_HIT_KO_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -5423,32 +5665,45 @@ static BOOL BattleClient_ScOneHitKO(BtlClient *client, s32 *seq, const u32 *args
     return FALSE;
 }
 
+// The steps of BattleClient_ScSetGaugeStatus: set the gauge's status, then end
+enum {
+    GAUGE_STATUS_SEQ_START,
+    GAUGE_STATUS_SEQ_END,
+};
+
 static BOOL BattleClient_ScSetGaugeStatus(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case GAUGE_STATUS_SEQ_START:
         BtlvEffect_SetGaugeStatus(
             args[1],
             BattlePosToViewPos(client->mainModule, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0])));
         (*seq)++;
         break;
-    case 1:
+    case GAUGE_STATUS_SEQ_END:
         return TRUE;
     }
     return FALSE;
 }
 
+// The steps of BattleClient_ScConfusionDamage: show the hit, then the damage, and wait for it
+enum {
+    CONFUSION_SEQ_START,
+    CONFUSION_SEQ_DAMAGE,
+    CONFUSION_SEQ_WAIT_DAMAGE,
+};
+
 static BOOL BattleClient_ScConfusionDamage(BtlClient *client, s32 *seq, const u32 *args) {
     u8 pos;
 
     switch (*seq) {
-    case 0:
+    case CONFUSION_SEQ_START:
         if (!BattleClient_IsChapterSkipping(client)) {
             pos = MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]);
             BtlvCore_StartMoveEffect(client->viewCore, pos, pos, 1, PML_MoveGetParam(1, MOVE_PARAM_TARGET), 0, 0);
         }
         (*seq)++;
         break;
-    case 1:
+    case CONFUSION_SEQ_DAMAGE:
         if (BtlvCore_WaitMoveEffect(client->viewCore)) {
             pos = MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]);
             if (!BattleClient_IsChapterSkipping(client)) {
@@ -5458,7 +5713,7 @@ static BOOL BattleClient_ScConfusionDamage(BtlClient *client, s32 *seq, const u3
             (*seq)++;
         }
         break;
-    case 2:
+    case CONFUSION_SEQ_WAIT_DAMAGE:
         if (BtlvCore_WaitDamage(client->viewCore)) {
             return TRUE;
         }
@@ -5467,14 +5722,20 @@ static BOOL BattleClient_ScConfusionDamage(BtlClient *client, s32 *seq, const u3
     return FALSE;
 }
 
+// The steps of BattleClient_ScFaint: start the faint, then wait for it and clear the fainted Pokemon
+enum {
+    FAINT_SEQ_START,
+    FAINT_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScFaint(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case FAINT_SEQ_START:
         BtlvCore_StartFaint(client->viewCore, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
         client->studio.faintedSpecies = GetBattleMonSpecies(GetPokeParamConst(client->pokeCon, args[0]));
         (*seq)++;
         break;
-    case 1:
+    case FAINT_SEQ_WAIT:
         if (BtlvCore_WaitFaint(client->viewCore)) {
             Clear_ForFainted(GetPokeParam(client->pokeCon, args[0]));
             return TRUE;
@@ -5484,13 +5745,19 @@ static BOOL BattleClient_ScFaint(BtlClient *client, s32 *seq, const u32 *args) {
     return FALSE;
 }
 
+// The steps of BattleClient_ScShowMon: show the Pokemon, then wait for it
+enum {
+    SHOW_MON_SEQ_START,
+    SHOW_MON_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScShowMon(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case SHOW_MON_SEQ_START:
         BtlvCore_StartShowMon(client->viewCore, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
         (*seq)++;
         break;
-    case 1:
+    case SHOW_MON_SEQ_WAIT:
         if (BtlvCore_WaitShowMon(client->viewCore)) {
             return TRUE;
         }
@@ -5499,11 +5766,17 @@ static BOOL BattleClient_ScShowMon(BtlClient *client, s32 *seq, const u32 *args)
     return FALSE;
 }
 
+// The steps of BattleClient_ScStatDownEffect: show the stat-down effect, then wait for it
+enum {
+    STAT_DOWN_SEQ_START,
+    STAT_DOWN_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScStatDownEffect(BtlClient *client, s32 *seq, const u32 *args) {
     u8 viewPos = BattlePosToViewPos(client->mainModule, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
 
     switch (*seq) {
-    case 0:
+    case STAT_DOWN_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
@@ -5513,7 +5786,7 @@ static BOOL BattleClient_ScStatDownEffect(BtlClient *client, s32 *seq, const u32
         BtlvCore_StartRankDownEffect(client->viewCore, viewPos);
         (*seq)++;
         break;
-    case 1:
+    case STAT_DOWN_SEQ_WAIT:
         if (BtlvCore_WaitRankEffect(client->viewCore, viewPos)) {
             return TRUE;
         }
@@ -5522,11 +5795,17 @@ static BOOL BattleClient_ScStatDownEffect(BtlClient *client, s32 *seq, const u32
     return FALSE;
 }
 
+// The steps of BattleClient_ScStatUpEffect: show the stat-up effect, then wait for it
+enum {
+    STAT_UP_SEQ_START,
+    STAT_UP_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScStatUpEffect(BtlClient *client, s32 *seq, const u32 *args) {
     u8 viewPos = BattlePosToViewPos(client->mainModule, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
 
     switch (*seq) {
-    case 0:
+    case STAT_UP_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
@@ -5536,7 +5815,7 @@ static BOOL BattleClient_ScStatUpEffect(BtlClient *client, s32 *seq, const u32 *
         BtlvCore_StartRankUpEffect(client->viewCore, viewPos);
         (*seq)++;
         break;
-    case 1:
+    case STAT_UP_SEQ_WAIT:
         if (BtlvCore_WaitRankEffect(client->viewCore, viewPos)) {
             return TRUE;
         }
@@ -5545,11 +5824,19 @@ static BOOL BattleClient_ScStatUpEffect(BtlClient *client, s32 *seq, const u32 *
     return FALSE;
 }
 
+// The steps of BattleClient_ScWeatherStart: set the weather, start its animation, then show its message and wait
+// for it
+enum {
+    WEATHER_START_SEQ_SET,
+    WEATHER_START_SEQ_EFFECT,
+    WEATHER_START_SEQ_MSG,
+};
+
 static BOOL BattleClient_ScWeatherStart(BtlClient *client, s32 *seq, const u32 *args) {
     u8 weather = args[0];
 
     switch (*seq) {
-    case 0:
+    case WEATHER_START_SEQ_SET:
         BtlField_SetWeather(client->field, weather, args[1]);
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
@@ -5559,13 +5846,13 @@ static BOOL BattleClient_ScWeatherStart(BtlClient *client, s32 *seq, const u32 *
         }
         (*seq)++;
         break;
-    case 1:
+    case WEATHER_START_SEQ_EFFECT:
         if (!BtlvEffect_IsBusy()) {
             BtlvCore_StartMsgStd(client->viewCore, sWeatherStartTable[weather].msg, NULL);
             (*seq)++;
         }
         break;
-    case 2:
+    case WEATHER_START_SEQ_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -5574,22 +5861,28 @@ static BOOL BattleClient_ScWeatherStart(BtlClient *client, s32 *seq, const u32 *
     return FALSE;
 }
 
+// The steps of BattleClient_ScWeatherEnd: show the message of the weather that ends, then clear it and wait
+enum {
+    WEATHER_END_SEQ_MSG,
+    WEATHER_END_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScWeatherEnd(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case WEATHER_END_SEQ_MSG: {
         u16 msg;
 
         switch ((u8)args[0]) {
-        case 1:
+        case BTL_WEATHER_SUN:
             msg = 0x59;
             break;
-        case 2:
+        case BTL_WEATHER_RAIN:
             msg = 0x5a;
             break;
-        case 4:
+        case BTL_WEATHER_SANDSTORM:
             msg = 0x5b;
             break;
-        case 3:
+        case BTL_WEATHER_HAIL:
             msg = 0x5c;
             break;
         default:
@@ -5599,7 +5892,7 @@ static BOOL BattleClient_ScWeatherEnd(BtlClient *client, s32 *seq, const u32 *ar
         (*seq)++;
         break;
     }
-    case 1:
+    case WEATHER_END_SEQ_WAIT:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             BtlField_ClearWeather(client->field);
             return TRUE;
@@ -5609,13 +5902,19 @@ static BOOL BattleClient_ScWeatherEnd(BtlClient *client, s32 *seq, const u32 *ar
     return FALSE;
 }
 
+// The steps of BattleClient_ScUpdateHpGauge: start the gauge, then wait for it
+enum {
+    HP_GAUGE_SEQ_START,
+    HP_GAUGE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScUpdateHpGauge(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case HP_GAUGE_SEQ_START:
         BtlvCore_StartGaugeHP(client->viewCore, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
         (*seq)++;
         break;
-    case 1:
+    case HP_GAUGE_SEQ_WAIT:
         if (BtlvCore_WaitGaugeHP(client->viewCore)) {
             return TRUE;
         }
@@ -5624,11 +5923,17 @@ static BOOL BattleClient_ScUpdateHpGauge(BtlClient *client, s32 *seq, const u32 
     return FALSE;
 }
 
+// The steps of BattleClient_ScUseHeldItem: show the item's effect, then wait for it
+enum {
+    USE_ITEM_SEQ_START,
+    USE_ITEM_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScUseHeldItem(BtlClient *client, s32 *seq, const u32 *args) {
     u8 pos = MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]);
 
     switch (*seq) {
-    case 0:
+    case USE_ITEM_SEQ_START:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
@@ -5638,7 +5943,7 @@ static BOOL BattleClient_ScUseHeldItem(BtlClient *client, s32 *seq, const u32 *a
         BtlvCore_StartUseItemEffect(client->viewCore, pos);
         (*seq)++;
         break;
-    case 1:
+    case USE_ITEM_SEQ_WAIT:
         if (BtlvCore_WaitUseItemEffect(client->viewCore, pos)) {
             return TRUE;
         }
@@ -5647,16 +5952,22 @@ static BOOL BattleClient_ScUseHeldItem(BtlClient *client, s32 *seq, const u32 *a
     return FALSE;
 }
 
+// The steps of BattleClient_ScFaintHpGauge: start the gauge and save the fainted species, then wait for it
+enum {
+    FAINT_HP_SEQ_START,
+    FAINT_HP_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScFaintHpGauge(BtlClient *client, s32 *seq, const u32 *args) {
     u8 monId = args[0];
 
     switch (*seq) {
-    case 0:
+    case FAINT_HP_SEQ_START:
         BtlvCore_StartGaugeHP(client->viewCore, MonIDToBattlePos(client->mainModule, client->pokeCon, monId));
         client->studio.faintedSpecies = GetBattleMonSpecies(GetPokeParamConst(client->pokeCon, args[0]));
         (*seq)++;
         break;
-    case 1:
+    case FAINT_HP_SEQ_WAIT:
         if (BtlvCore_WaitGaugeHP(client->viewCore)) {
             return TRUE;
         }
@@ -5665,9 +5976,16 @@ static BOOL BattleClient_ScFaintHpGauge(BtlClient *client, s32 *seq, const u32 *
     return FALSE;
 }
 
+// The steps of BattleClient_ScSwapPos: swap the two positions in the party and in the view, then wait for the
+// animation
+enum {
+    SWAP_POS_SEQ_START,
+    SWAP_POS_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScSwapPos(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case SWAP_POS_SEQ_START: {
         u8 clientId = args[0];
         u8 pos1 = args[1];
         u8 pos2 = args[2];
@@ -5681,7 +5999,7 @@ static BOOL BattleClient_ScSwapPos(BtlClient *client, s32 *seq, const u32 *args)
         (*seq)++;
         break;
     }
-    case 1:
+    case SWAP_POS_SEQ_WAIT:
         if (BtlvCore_WaitSwapPokemon(client->viewCore)) {
             return TRUE;
         }
@@ -5690,13 +6008,22 @@ static BOOL BattleClient_ScSwapPos(BtlClient *client, s32 *seq, const u32 *args)
     return FALSE;
 }
 
+// The steps of BattleClient_ScMoveToCenter: play the effect, then move each of the two Pokemon to the centre
+// position and wait for the swaps
+enum {
+    MOVE_CENTER_SEQ_EFFECT,
+    MOVE_CENTER_SEQ_FIRST_SWAP,
+    MOVE_CENTER_SEQ_SECOND_SWAP,
+    MOVE_CENTER_SEQ_WAIT_SWAP,
+};
+
 static BOOL BattleClient_ScMoveToCenter(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case MOVE_CENTER_SEQ_EFFECT:
         BtlvEffect_Start(0x281);
         (*seq)++;
         break;
-    case 1:
+    case MOVE_CENTER_SEQ_FIRST_SWAP:
         if (!BtlvEffect_IsBusy()) {
             u8 clientId = args[0];
             u8 slot = args[1];
@@ -5710,7 +6037,7 @@ static BOOL BattleClient_ScMoveToCenter(BtlClient *client, s32 *seq, const u32 *
             (*seq)++;
         }
         break;
-    case 2:
+    case MOVE_CENTER_SEQ_SECOND_SWAP:
         if (BtlvCore_WaitSwapPokemon(client->viewCore)) {
             u8 clientId = args[2];
             u8 slot = args[3];
@@ -5724,7 +6051,7 @@ static BOOL BattleClient_ScMoveToCenter(BtlClient *client, s32 *seq, const u32 *
             (*seq)++;
         }
         break;
-    case 3:
+    case MOVE_CENTER_SEQ_WAIT_SWAP:
         if (BtlvCore_WaitSwapPokemon(client->viewCore)) {
             return TRUE;
         }
@@ -5733,13 +6060,19 @@ static BOOL BattleClient_ScMoveToCenter(BtlClient *client, s32 *seq, const u32 *
     return FALSE;
 }
 
+// The steps of BattleClient_ScSubstituteCreate: show the substitute, then wait for the effect
+enum {
+    SUBSTITUTE_SEQ_START,
+    SUBSTITUTE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScSubstituteCreate(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case SUBSTITUTE_SEQ_START:
         BtlvEffect_StartEffect26E(BattlePosToViewPos(client->mainModule, args[0]));
         (*seq)++;
         break;
-    case 1:
+    case SUBSTITUTE_SEQ_WAIT:
         if (!BtlvEffect_IsBusy()) {
             return TRUE;
         }
@@ -5748,9 +6081,15 @@ static BOOL BattleClient_ScSubstituteCreate(BtlClient *client, s32 *seq, const u
     return FALSE;
 }
 
+// The steps of BattleClient_ScSubstituteDelete: remove the substitute, then wait for the effect
+enum {
+    SUBSTITUTE_DELETE_SEQ_START,
+    SUBSTITUTE_DELETE_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScSubstituteDelete(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case SUBSTITUTE_DELETE_SEQ_START: {
         u8 viewPos = BattlePosToViewPos(client->mainModule, args[0]);
 
         if (BattleClient_IsChapterSkipping(client)) {
@@ -5760,7 +6099,7 @@ static BOOL BattleClient_ScSubstituteDelete(BtlClient *client, s32 *seq, const u
         (*seq)++;
         break;
     }
-    case 1:
+    case SUBSTITUTE_DELETE_SEQ_WAIT:
         if (!BtlvEffect_IsBusy()) {
             if (BattleClient_IsChapterSkipping(client)) {
                 BtlvEffect_SetMuteSE(FALSE);
@@ -5772,9 +6111,15 @@ static BOOL BattleClient_ScSubstituteDelete(BtlClient *client, s32 *seq, const u
     return FALSE;
 }
 
+// The steps of BattleClient_ScTransform: transform the Pokemon, then wait for the animation
+enum {
+    TRANSFORM_SEQ_START,
+    TRANSFORM_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScTransform(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case TRANSFORM_SEQ_START: {
         BattleMon *mon = GetPokeParam(client->pokeCon, args[0]);
         BattleMon *target = GetPokeParam(client->pokeCon, args[1]);
         u8 pos = MonIDToViewPos(client->mainModule, client->pokeCon, args[0]);
@@ -5785,7 +6130,7 @@ static BOOL BattleClient_ScTransform(BtlClient *client, s32 *seq, const u32 *arg
         (*seq)++;
         break;
     }
-    case 1:
+    case TRANSFORM_SEQ_WAIT:
         if (BtlvCore_WaitTransform(client->viewCore)) {
             return TRUE;
         }
@@ -5794,9 +6139,15 @@ static BOOL BattleClient_ScTransform(BtlClient *client, s32 *seq, const u32 *arg
     return FALSE;
 }
 
+// The steps of BattleClient_ScDamageEffect: show the damage's effect, then wait for it
+enum {
+    DAMAGE_EFFECT_SEQ_START,
+    DAMAGE_EFFECT_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScDamageEffect(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case DAMAGE_EFFECT_SEQ_START:
         if (!BattleClient_IsChapterSkipping(client)) {
             u8 pos = MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]);
 
@@ -5805,7 +6156,7 @@ static BOOL BattleClient_ScDamageEffect(BtlClient *client, s32 *seq, const u32 *
             break;
         }
         return TRUE;
-    case 1:
+    case DAMAGE_EFFECT_SEQ_WAIT:
         if (BtlvCore_WaitDamageEffect(client->viewCore)) {
             return TRUE;
         }
@@ -5819,13 +6170,19 @@ static BOOL BattleClient_ScPlayBgm(BtlClient *client, s32 *seq, const u32 *args)
     return TRUE;
 }
 
+// The steps of BattleClient_ScHideMsgWindow: hide the message window, then wait for it
+enum {
+    HIDE_MSG_SEQ_START,
+    HIDE_MSG_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScHideMsgWindow(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case HIDE_MSG_SEQ_START:
         BtlvCore_StartHideMsgWin(client->viewCore);
         (*seq)++;
         break;
-    case 1:
+    case HIDE_MSG_SEQ_WAIT:
         if (BtlvCore_WaitHideMsgWin(client->viewCore)) {
             return TRUE;
         }
@@ -5862,7 +6219,7 @@ static BOOL BattleClient_ScExpGain(BtlClient *client, s32 *seq, const u32 *args)
     u32 pos = MonIDToViewPos(client->mainModule, client->pokeCon, monId);
     BOOL visible = FALSE;
 
-    if (pos != 0xff && BtlvEffect_CheckGaugeExist(pos)) {
+    if (pos != BTLV_MCSS_POS_NONE && BtlvEffect_CheckGaugeExist(pos)) {
         visible = TRUE;
     }
 
@@ -5980,12 +6337,19 @@ static BOOL BattleClient_ScExpGain(BtlClient *client, s32 *seq, const u32 *args)
     return FALSE;
 }
 
-static BOOL BattleClient_ForgetMoveSECallback(u32 arg0) {
-    switch (arg0) {
-    case 3:
+// The events of the forgotten move's message, which the stream calls: 3 plays the sound and 5 waits for it, as
+// MoveTutor_StreamCallback's events do
+enum {
+    FORGET_MOVE_STREAM_PLAY_SE = 3,
+    FORGET_MOVE_STREAM_WAIT_SE = 5,
+};
+
+static BOOL BattleClient_ForgetMoveSECallback(u32 event) {
+    switch (event) {
+    case FORGET_MOVE_STREAM_PLAY_SE:
         GFL_SndSEPlay(SEQ_SE_KON);
         break;
-    case 5:
+    case FORGET_MOVE_STREAM_WAIT_SE:
         if (GFL_SndIsPlaying(SEQ_SE_KON)) {
             return TRUE;
         }
@@ -6084,7 +6448,7 @@ static BOOL BattleClient_LearnMoveSeq(BtlClient *client, s32 *seq, BattleMon *mo
         u8 slot;
 
         if (BtlvCore_WaitForgetMoveSelect(client->viewCore, &slot)) {
-            if (slot == 4) {
+            if (slot == BPLIST_MOVE_SLOT_NONE) {
                 *seq = LEARN_SEQ_ASK_FORGET;
             } else {
                 PartyPkm *pkm = GetSrcData(GetPokeParam(client->pokeCon, monId));
@@ -6153,17 +6517,27 @@ static BOOL BattleClient_LearnMoveSeq(BtlClient *client, s32 *seq, BattleMon *mo
     return FALSE;
 }
 
+// The steps of BattleClient_ScBallThrow: throw the ball, show its message, and on a catch play the victory BGM and
+// show the message of the caught Pokemon
+enum {
+    BALL_THROW_SEQ_START,
+    BALL_THROW_SEQ_MSG,
+    BALL_THROW_SEQ_NOTIFY_CAUGHT,
+    BALL_THROW_SEQ_CAUGHT_MSG,
+    BALL_THROW_SEQ_WAIT_CAUGHT_MSG,
+};
+
 static BOOL BattleClient_ScBallThrow(BtlClient *client, s32 *seq, const u32 *args) {
     static const u16 sEscapeMessages[4] = { 0x3d, 0x3e, 0x3f, 0x40 };
     BattleMon *mon;
     u16 message;
 
     switch (*seq) {
-    case 0:
+    case BALL_THROW_SEQ_START:
         BtlvEffect_StartBallThrow(BattlePosToViewPos(client->mainModule, args[0]), args[5], args[1], args[2], args[4]);
         (*seq)++;
         break;
-    case 1:
+    case BALL_THROW_SEQ_MSG:
         if (!BtlvEffect_IsBusy()) {
             if (args[2]) {
                 mon = PokeCon_GetPosMonInner(client->pokeCon, args[0]);
@@ -6182,7 +6556,7 @@ static BOOL BattleClient_ScBallThrow(BtlClient *client, s32 *seq, const u32 *arg
             (*seq)++;
         }
         break;
-    case 2:
+    case BALL_THROW_SEQ_NOTIFY_CAUGHT:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             if (args[2]) {
                 mon = PokeCon_GetPosMonInner(client->pokeCon, args[0]);
@@ -6193,7 +6567,7 @@ static BOOL BattleClient_ScBallThrow(BtlClient *client, s32 *seq, const u32 *arg
             }
         }
         break;
-    case 3:
+    case BALL_THROW_SEQ_CAUGHT_MSG:
         if (!GFL_SndBGMIsPlaying()) {
             BtlvEffect_Resume();
             GFL_SndBGMPlay(SEQ_BGM_WIN1, 0xffff);
@@ -6209,7 +6583,7 @@ static BOOL BattleClient_ScBallThrow(BtlClient *client, s32 *seq, const u32 *arg
             }
         }
         break;
-    case 4:
+    case BALL_THROW_SEQ_WAIT_CAUGHT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             (*seq)++;
         }
@@ -6220,20 +6594,27 @@ static BOOL BattleClient_ScBallThrow(BtlClient *client, s32 *seq, const u32 *arg
     return FALSE;
 }
 
+// The steps of BattleClient_ScBallThrowTrainer: throw the ball, then show its message and wait for it
+enum {
+    BALL_TRAINER_SEQ_START,
+    BALL_TRAINER_SEQ_MSG,
+    BALL_TRAINER_SEQ_WAIT_MSG,
+};
+
 static BOOL BattleClient_ScBallThrowTrainer(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0:
+    case BALL_TRAINER_SEQ_START:
         BtlvEffect_StartEffect23D(BattlePosToViewPos(client->mainModule, args[0]), args[1]);
         (*seq)++;
         break;
-    case 1:
+    case BALL_TRAINER_SEQ_MSG:
         if (!BtlvEffect_IsBusy()) {
             Btlv_StringParam_Setup(&client->strParam, BTLV_STR_STD, 0x43);
             BtlvCore_StartMsg(client->viewCore, &client->strParam);
             (*seq)++;
         }
         break;
-    case 2:
+    case BALL_TRAINER_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -6242,9 +6623,17 @@ static BOOL BattleClient_ScBallThrowTrainer(BtlClient *client, s32 *seq, const u
     return FALSE;
 }
 
+// The steps of BattleClient_ScRotation: rotate the party, then, unless the rotation stayed, show its message and
+// wait for it
+enum {
+    ROTATION_CMD_SEQ_START,
+    ROTATION_CMD_SEQ_MSG,
+    ROTATION_CMD_SEQ_WAIT_MSG,
+};
+
 static BOOL BattleClient_ScRotation(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case ROTATION_CMD_SEQ_START: {
         u8 clientId = args[0];
         u8 result = args[1];
 
@@ -6253,17 +6642,17 @@ static BOOL BattleClient_ScRotation(BtlClient *client, s32 *seq, const u32 *args
         (*seq)++;
         break;
     }
-    case 1:
+    case ROTATION_CMD_SEQ_MSG:
         if (BtlvCore_WaitRotation(client->viewCore)) {
             u8 result = args[1];
             u8 isNpc;
             u16 message;
 
-            if (result == 1) {
+            if (result == BTLV_EFFECT_ROTATE_NONE) {
                 return TRUE;
             }
             isNpc = IsClientNPCTrainer(client->mainModule, args[0]);
-            if (result == 3) {
+            if (result == BTLV_EFFECT_ROTATE_THIRD) {
                 message = isNpc ? 0x26 : 0x27;
             } else {
                 message = isNpc ? 0x28 : 0x29;
@@ -6272,7 +6661,7 @@ static BOOL BattleClient_ScRotation(BtlClient *client, s32 *seq, const u32 *args
             (*seq)++;
         }
         break;
-    case 2:
+    case ROTATION_CMD_SEQ_WAIT_MSG:
         if (BtlvCore_WaitMsg(client->viewCore)) {
             return TRUE;
         }
@@ -6281,12 +6670,19 @@ static BOOL BattleClient_ScRotation(BtlClient *client, s32 *seq, const u32 *args
     return FALSE;
 }
 
+// The steps of BattleClient_ScChangeAbility: show the ability window, change the ability, then update the window
+enum {
+    CHANGE_ABILITY_SEQ_SHOW,
+    CHANGE_ABILITY_SEQ_UPDATE,
+    CHANGE_ABILITY_SEQ_WAIT_UPDATE,
+};
+
 static BOOL BattleClient_ScChangeAbility(BtlClient *client, s32 *seq, const u32 *args) {
     u8 monId = args[0];
     u8 pos = MonIDToBattlePos(client->mainModule, client->pokeCon, monId);
 
     switch (*seq) {
-    case 0:
+    case CHANGE_ABILITY_SEQ_SHOW:
         if (BattleClient_IsChapterSkipping(client)) {
             ChangeAbility(GetPokeParam(client->pokeCon, monId), args[1]);
             return TRUE;
@@ -6294,14 +6690,14 @@ static BOOL BattleClient_ScChangeAbility(BtlClient *client, s32 *seq, const u32 
         BtlvCore_ShowAbilityWin(client->viewCore, pos, 0);
         (*seq)++;
         break;
-    case 1:
+    case CHANGE_ABILITY_SEQ_UPDATE:
         if (BtlvCore_WaitShowAbilityWin(client->viewCore, pos)) {
             ChangeAbility(GetPokeParam(client->pokeCon, monId), args[1]);
             BtlvCore_UpdateAbilityWin(client->viewCore, pos);
             (*seq)++;
         }
         break;
-    case 2:
+    case CHANGE_ABILITY_SEQ_WAIT_UPDATE:
         if (BtlvCore_WaitUpdateAbilityWin(client->viewCore, pos)) {
             (*seq)++;
         }
@@ -6311,6 +6707,18 @@ static BOOL BattleClient_ScChangeAbility(BtlClient *client, s32 *seq, const u32 
     }
     return FALSE;
 }
+
+// The steps of BattleClient_ScSwapAbility: show the first ability window, the second, swap the abilities and
+// update both windows
+enum {
+    SWAP_ABILITY_SEQ_SHOW_FIRST,
+    SWAP_ABILITY_SEQ_SHOW_SECOND,
+    SWAP_ABILITY_SEQ_WAIT_SHOW,
+    SWAP_ABILITY_SEQ_CHANGE,
+    SWAP_ABILITY_SEQ_UPDATE_FIRST,
+    SWAP_ABILITY_SEQ_UPDATE_SECOND,
+    SWAP_ABILITY_SEQ_WAIT_UPDATE,
+};
 
 static BOOL BattleClient_ScSwapAbility(BtlClient *client, s32 *seq, const u32 *args) {
     u8 monId1 = args[0];
@@ -6323,7 +6731,7 @@ static BOOL BattleClient_ScSwapAbility(BtlClient *client, s32 *seq, const u32 *a
     BattleMon *mon2 = GetPokeParam(client->pokeCon, monId2);
 
     switch (*seq) {
-    case 0:
+    case SWAP_ABILITY_SEQ_SHOW_FIRST:
         if (BattleClient_IsChapterSkipping(client)) {
             ChangeAbility(mon1, ability1);
             ChangeAbility(mon2, ability2);
@@ -6338,7 +6746,7 @@ static BOOL BattleClient_ScSwapAbility(BtlClient *client, s32 *seq, const u32 *a
         sSwapTimer = 8;
         (*seq)++;
         break;
-    case 1:
+    case SWAP_ABILITY_SEQ_SHOW_SECOND:
         BtlvCore_WaitShowAbilityWin(client->viewCore, pos1);
         if (sSwapTimer != 0) {
             sSwapTimer--;
@@ -6347,7 +6755,7 @@ static BOOL BattleClient_ScSwapAbility(BtlClient *client, s32 *seq, const u32 *a
             (*seq)++;
         }
         break;
-    case 2: {
+    case SWAP_ABILITY_SEQ_WAIT_SHOW: {
         u8 done1 = BtlvCore_WaitShowAbilityWin(client->viewCore, pos1);
         u8 done2 = BtlvCore_WaitShowAbilityWin(client->viewCore, pos2);
 
@@ -6356,25 +6764,25 @@ static BOOL BattleClient_ScSwapAbility(BtlClient *client, s32 *seq, const u32 *a
         }
         break;
     }
-    case 3:
+    case SWAP_ABILITY_SEQ_CHANGE:
         ChangeAbility(mon1, ability1);
         ChangeAbility(mon2, ability2);
         sSwapTimer = 0;
         (*seq)++;
         break;
-    case 4:
+    case SWAP_ABILITY_SEQ_UPDATE_FIRST:
         if (++sSwapTimer > 8) {
             BtlvCore_UpdateAbilityWin(client->viewCore, pos1);
             (*seq)++;
         }
         break;
-    case 5:
+    case SWAP_ABILITY_SEQ_UPDATE_SECOND:
         if (BtlvCore_WaitUpdateAbilityWin(client->viewCore, pos1)) {
             BtlvCore_UpdateAbilityWin(client->viewCore, pos2);
             (*seq)++;
         }
         break;
-    case 6:
+    case SWAP_ABILITY_SEQ_WAIT_UPDATE:
         if (BtlvCore_WaitUpdateAbilityWin(client->viewCore, pos2)) {
             (*seq)++;
         }
@@ -6385,9 +6793,15 @@ static BOOL BattleClient_ScSwapAbility(BtlClient *client, s32 *seq, const u32 *a
     return FALSE;
 }
 
+// The steps of BattleClient_ScIllusionBreak: break the illusion, then wait for the animation
+enum {
+    ILLUSION_SEQ_START,
+    ILLUSION_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScIllusionBreak(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case ILLUSION_SEQ_START: {
         u8 monId = args[0];
         u8 pos = MonIDToBattlePos(client->mainModule, client->pokeCon, monId);
         BattleMon *mon = GetPokeParam(client->pokeCon, monId);
@@ -6398,7 +6812,7 @@ static BOOL BattleClient_ScIllusionBreak(BtlClient *client, s32 *seq, const u32 
         (*seq)++;
         break;
     }
-    case 1:
+    case ILLUSION_SEQ_WAIT:
         if (BtlvCore_WaitIllusionBreak(client->viewCore)) {
             (*seq)++;
         }
@@ -6456,9 +6870,15 @@ static BOOL BattleClient_ScEffectBetweenPos(BtlClient *client, s32 *seq, const u
     return FALSE;
 }
 
+// The steps of BattleClient_ScChangeForm: change the form, then wait for the animation
+enum {
+    CHANGE_FORM_SEQ_START,
+    CHANGE_FORM_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScChangeForm(BtlClient *client, s32 *seq, const u32 *args) {
     switch (*seq) {
-    case 0: {
+    case CHANGE_FORM_SEQ_START: {
         u8 pos = BattlePosToViewPos(client->mainModule, MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]));
 
         ChangeForm(GetPokeParam(client->pokeCon, args[0]), args[1]);
@@ -6466,7 +6886,7 @@ static BOOL BattleClient_ScChangeForm(BtlClient *client, s32 *seq, const u32 *ar
         (*seq)++;
         break;
     }
-    case 1:
+    case CHANGE_FORM_SEQ_WAIT:
         if (BtlvCore_WaitFormChange(client->viewCore)) {
             (*seq)++;
         }
@@ -6477,18 +6897,24 @@ static BOOL BattleClient_ScChangeForm(BtlClient *client, s32 *seq, const u32 *ar
     return FALSE;
 }
 
+// The steps of BattleClient_ScAbilityPopupIn: show the ability window, then wait for it
+enum {
+    ABILITY_POPUP_IN_SEQ_SHOW,
+    ABILITY_POPUP_IN_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScAbilityPopupIn(BtlClient *client, s32 *seq, const u32 *args) {
     u8 pos = MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]);
 
     switch (*seq) {
-    case 0:
+    case ABILITY_POPUP_IN_SEQ_SHOW:
         if (BattleClient_IsChapterSkipping(client)) {
             return TRUE;
         }
         BtlvCore_ShowAbilityWin(client->viewCore, pos, 1);
         (*seq)++;
         break;
-    case 1:
+    case ABILITY_POPUP_IN_SEQ_WAIT:
         if (BtlvCore_WaitShowAbilityWin(client->viewCore, pos)) {
             (*seq)++;
         }
@@ -6499,15 +6925,21 @@ static BOOL BattleClient_ScAbilityPopupIn(BtlClient *client, s32 *seq, const u32
     return FALSE;
 }
 
+// The steps of BattleClient_ScAbilityPopupOut: hide the ability window, then wait for it
+enum {
+    ABILITY_POPUP_OUT_SEQ_HIDE,
+    ABILITY_POPUP_OUT_SEQ_WAIT,
+};
+
 static BOOL BattleClient_ScAbilityPopupOut(BtlClient *client, s32 *seq, const u32 *args) {
     u8 pos = MonIDToBattlePos(client->mainModule, client->pokeCon, args[0]);
 
     switch (*seq) {
-    case 0:
+    case ABILITY_POPUP_OUT_SEQ_HIDE:
         BtlvCore_HideAbilityWin(client->viewCore, pos);
         (*seq)++;
         break;
-    case 1:
+    case ABILITY_POPUP_OUT_SEQ_WAIT:
         if (BtlvCore_WaitHideAbilityWin(client->viewCore, pos)) {
             return TRUE;
         }

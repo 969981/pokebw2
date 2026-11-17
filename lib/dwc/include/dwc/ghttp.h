@@ -22,7 +22,10 @@ typedef enum {
     GHTTPWaiting,
     GHTTPReceivingStatus,
     GHTTPReceivingHeaders,
-    GHTTPReceivingFile
+    GHTTPReceivingFile,
+    // The client's last state, for closing a connection: ghttpCancelRequest sets it, and ghiProcessConnection sets it
+    // when the close has to wait, logging "Connection Closing"
+    GHTTPDisconnecting
 } GHTTPState;
 
 typedef enum {
@@ -44,7 +47,8 @@ typedef enum {
     GHTTPFileIncomplete,
     GHTTPFileToBig,
     GHTTPEncryptionError,
-    GHTTPRequestCancelled
+    GHTTPRequestCancelled,
+    GHTTPRecvFileTimeout
 } GHTTPResult;
 
 typedef enum {
@@ -52,6 +56,7 @@ typedef enum {
     GHTTPEncryptionEngine_GameSpy,
     GHTTPEncryptionEngine_MatrixSsl,
     GHTTPEncryptionEngine_RevoEx,
+    GHTTPEncryptionEngine_Twl,
     GHTTPEncryptionEngine_Default
 } GHTTPEncryptionEngine;
 

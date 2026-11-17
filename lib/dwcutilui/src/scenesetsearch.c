@@ -84,7 +84,7 @@ static void procInit1(void) {
 }
 
 static void procInit2(void) {
-    if (DWCi_BTNlGet() != -2) {
+    if (DWCi_BTNlGet() != DWC_UTIL_BUTTON_HIDDEN) {
         DWCi_BTNlEnable();
         DWCi_ChangeScene(DWCUtilApSearch_Main);
     }
@@ -118,7 +118,7 @@ static void DWCUtilApSearch_CheckScan(void) {
         return;
     }
     for (i = 0; i < count; i++) {
-        if (entries[i].security != 2) {
+        if (entries[i].security != DWC_UTIL_AP_WPA) {
             break;
         }
     }
@@ -138,7 +138,7 @@ static void DWCUtilApSearch_CheckScan(void) {
 static void DWCUtilApSearch_HandleInput(void) {
     if (DWCi_IPTlCheckTrigger(2)) {
         DWCi_SNDlStop();
-        DWCi_BTNlSet(0);
+        DWCi_BTNlSet(DWC_UTIL_BUTTON_CANCEL);
     }
 }
 
@@ -147,7 +147,7 @@ static void draw(void) {
 
 // The button ends the search
 static void DWCUtilApSearch_HandleChoice(void) {
-    if (DWCi_BTNlGet() == 0) {
+    if (DWCi_BTNlGet() == DWC_UTIL_BUTTON_CANCEL) {
         DWCi_SNDlStop();
         DWCi_SNDlPlay(7);
         DWCi_ChangeScene(DWCUtilApSearch_DisableButtons);
@@ -193,7 +193,7 @@ static void endScene2(void) {
 }
 
 static void procError(void) {
-    if (DWCi_WINlGet() == 0) {
+    if (DWCi_WINlGet() == DWC_UTIL_DIALOG_BUTTON_FIRST) {
         DWCi_SNDlPlay(6);
         DWCi_WINlEnd();
         DWCi_ChangeScene(procError1);
