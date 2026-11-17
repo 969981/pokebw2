@@ -37,12 +37,37 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Fast-forward upstream-main mirror (never force push)
+      - name: Sync upstream-main source mirror (keep fork workflows)
         shell: bash
         run: |
           set -euo pipefail
-          git push origin refs/remotes/upstream/main:refs/heads/upstream-main
-          echo "Upstream snapshot: $(git rev-parse --short refs/remotes/upstream/main)" >> "$GITHUB_STEP_SUMMARY"
+          # GITHUB_TOKEN cannot push upstream modifications under .github/workflows.
+          # Keep the fork's workflow tree but merge all other upstream source changes.
+          git fetch --no-tags origin +refs/heads/upstream-main:refs/remotes/origin/upstream-main
+          git switch -C upstream-main refs/remotes/origin/upstream-main
+          UPSTREAM=$(git rev-parse refs/remotes/upstream/main)
+          if ! git merge-base --is-ancestor "$UPSTREAM" HEAD; then
+            BEFORE=$(git rev-parse HEAD)
+            if ! git merge --no-ff --no-commit refs/remotes/upstream/main; then
+              git rev-parse -q --verify MERGE_HEAD >/dev/null || exit 1
+            fi
+            while IFS= read -r -d '' conflicted; do
+              case "$conflicted" in
+                .github/workflows/*) git rm -f --cached -- "$conflicted" ;;
+              esac
+            done < <(git diff --name-only --diff-filter=U -z)
+            git restore --source="$BEFORE" --staged --worktree -- .github/workflows
+            if [[ -n "$(git ls-files -u)" ]]; then
+              echo "::error::Unresolved upstream source conflicts in upstream-main"
+              git ls-files -u
+              exit 1
+            fi
+            git commit -m "chore(sync): upstream sources $UPSTREAM"
+            git diff --quiet "$BEFORE" HEAD -- .github/workflows || exit 1
+            git push origin HEAD:refs/heads/upstream-main
+          fi
+          git switch main
+          echo "Upstream source snapshot: $(git rev-parse --short refs/remotes/upstream/main); fork CI preserved" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Merge upstream into main without overwriting local changes
         shell: bash
@@ -56,14 +81,25 @@ jobs:
             exit 0
           fi
 
-          if ! git -c merge.conflictStyle=zdiff3 merge --no-edit --no-ff refs/remotes/upstream/main; then
+          if ! git -c merge.conflictStyle=zdiff3 merge --no-ff --no-commit refs/remotes/upstream/main; then
+            git rev-parse -q --verify MERGE_HEAD >/dev/null || exit 1
+          fi
+          # Preserve local CI configuration and avoid GitHub workflow-write denial.
+          while IFS= read -r -d '' conflicted; do
+            case "$conflicted" in
+              .github/workflows/*) git rm -f --cached -- "$conflicted" ;;
+            esac
+          done < <(git diff --name-only --diff-filter=U -z)
+          git restore --source="$BEFORE" --staged --worktree -- .github/workflows
+          if [[ -n "$(git ls-files -u)" ]]; then
             git status --short
-            git merge --abort || true
-            echo "::error::Upstream merge conflicted. No changes pushed to main; resolve manually."
-            echo "Merge conflict between local main and upstream. No main update pushed." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Unresolved non-workflow upstream conflicts. No push."
             exit 1
           fi
-
+          git commit -m "chore(sync): merge upstream $UPSTREAM"
+          git diff --quiet "$BEFORE" HEAD -- .github/workflows || {
+            echo "::error::Local workflows must remain unchanged."; exit 1;
+          }
           git push origin HEAD:refs/heads/main
           AFTER=$(git rev-parse HEAD)
           {
