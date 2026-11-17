@@ -1,13 +1,6 @@
 name: Sync upstream pokebw2
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/sync-upstream.yml'
-  schedule:
-    # UTC 00:17, 06:17, 12:17, 18:17 (Singapore 08:17, 14:17, 20:17, 02:17)
-    - cron: '17 */6 * * *'
   workflow_dispatch:
 
 permissions:
