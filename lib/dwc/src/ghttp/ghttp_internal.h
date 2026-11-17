@@ -19,7 +19,7 @@ typedef struct GHIEncryptor GHIEncryptor;
 
 // What the encryption keeps of a connection: its SSL connection (ghttpEncryption.c) and whether that has started
 typedef struct GHIEncryptorState {
-    struct GHISslConnection *ssl;
+    CPSSslConnection *ssl;
     gsi_bool started;
 } GHIEncryptorState;
 
@@ -71,14 +71,21 @@ static inline void ghiCopy(void *dest, const void *src, gsi_u32 size) {
     }
 }
 
-// The certificates a root of trust is made of: the array and its length
+// The certificates a root of trust is made of: the array and its length. They are NitroWiFi's CPSCaInfo records,
+// which the SSL connection takes as its named_params
 typedef struct GHICertList {
-    void **certs;
+    CPSCaInfo **certs;
     int count;
 } GHICertList;
 
 // The size of the pieces that the data of a buffer is encrypted in
 #define GHI_ENCRYPT_CHUNK_SIZE 0x3f01
+
+// The defaults of GameSpy's ghttpCommon.h: the port of a URL that has none, and the throttle that ghttpStartup sets
+#define GHI_DEFAULT_PORT 80
+#define GHI_DEFAULT_SECURE_PORT 443
+#define GHI_DEFAULT_THROTTLE_BUFFER_SIZE 125
+#define GHI_DEFAULT_THROTTLE_TIME_DELAY 250
 
 // The encryption of a connection (ghttpEncryption.c): its engine, and the functions that start it, end it and
 // (en|de)crypt the data
@@ -148,8 +155,10 @@ struct GHIConnection {
     char *requestPath;
     GHIProtocol protocol;
     char *sendHeaders;
-    int unk_30;
-    char *unk_34;
+    // The file of a ghttpSave request: this build has no save call, so a connection only clears them. GameSpy's
+    // ghttpConnection.h has the same fields, and its ghiFreeConnectionData frees saveFileName at the same point
+    FILE *saveFile;
+    char *saveFileName;
     GHTTPBool blocking;
     GHTTPBool persistConnection;
     GHTTPResult result;

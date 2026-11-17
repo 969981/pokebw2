@@ -567,6 +567,7 @@
 . 0x0209b21c remove_symbol
 . 0x0209b234 remove_symbol
 . 0x0209b258 add_data data_0209b258
+. 0x0209b260 section_end lib/nnsys/src/g2d/g2d_OAM.c:.data
 . 0x0209b2ac remove_symbol
 . 0x0209b324 remove_symbol
 . 0x0209b328 add_data sEnvMapCmd
@@ -1404,6 +1405,7 @@ overlays/ov029 0x02197418 section_start lib/dwc/src/vct/vct_dsp.c:.data
 overlays/ov029 0x02197424 add_data data_ov029_02197424
 overlays/ov029 0x02197424 remove_symbol
 overlays/ov029 0x02197440 section_end lib/dwc/src/vct/vct_dsp.c:.data
+overlays/ov029 0x021975d5 remove_symbol
 overlays/ov029 0x02198358 section_end lib/dwc/src/vct/vct_audio.c:.bss
 overlays/ov029 0x02198358 section_start lib/dwc/src/vct/vct_buffer.c:.bss
 overlays/ov029 0x02198408 section_start lib/dwc/src/vct/vct_dsp.c:.bss
@@ -2130,6 +2132,13 @@ overlays/ov064 0x021e595a reloc_module overlay(119)
 overlays/ov064 0x021e597a reloc_module overlay(119)
 overlays/ov064 0x021e5a48 overlay_id 280
 overlays/ov064 0x021e5a4c reloc_module overlay(280)
+overlays/ov065 0x021e66d9 remove_symbol
+overlays/ov065 0x021e6779 remove_symbol
+overlays/ov065 0x021e67f9 remove_symbol
+overlays/ov065 0x021e6869 remove_symbol
+overlays/ov065 0x021e689d remove_symbol
+overlays/ov065 0x021e6935 remove_symbol
+overlays/ov065 0x021e6944 remove_symbol
 overlays/ov066 0x021e5816 reloc_module overlay(116)
 overlays/ov066 0x021e5836 reloc_module overlay(116)
 overlays/ov066 0x021e5856 reloc_module overlay(116)
@@ -2302,6 +2311,7 @@ overlays/ov085 0x021ed9fc remove_symbol
 overlays/ov085 0x021eda1c remove_symbol
 overlays/ov091 0x021ef924 remove_reloc
 overlays/ov091 0x021ef948 remove_reloc
+overlays/ov092 0x021ef610 reloc_module overlay(36)
 overlays/ov092 0x021f0001 remove_symbol
 overlays/ov092 0x021f0086 remove_symbol
 overlays/ov092 0x021f0105 remove_symbol
@@ -2801,6 +2811,11 @@ overlays/ov182 0x021bd8e4 remove_symbol
 overlays/ov182 0x021bdaf9 remove_symbol
 overlays/ov182 0x021bdb41 remove_symbol
 overlays/ov182 0x021bfb54 add_data data_ov182_021bfb54
+overlays/ov182 0x021c0150 remove_symbol
+overlays/ov182 0x021c0260 remove_symbol
+overlays/ov182 0x021c0260 remove_symbol@w2_us
+overlays/ov182 0x021c0302 remove_symbol
+overlays/ov182 0x021c0302 remove_symbol@w2_us
 overlays/ov182 0x021c04bc add_data data_ov182_021c04bc
 overlays/ov182 0x021c059c add_section lib/dwcutilui/src/foundation.c:.rodata:8
 overlays/ov182 0x021c0602 remove_symbol
@@ -2966,6 +2981,21 @@ overlays/ov189 0x021acd85 add_data sActionCount
 overlays/ov189 0x021acda4 section_start lib/dwc/src/nd/nd.c:.rodata
 overlays/ov189 0x021acea0 section_end lib/dwc/src/enc/dwc_encsession.c:.rodata
 overlays/ov189 0x021acea0 section_start lib/dwc/src/crypt/crypt.c:.rodata
+overlays/ov189 0x021adc6d remove_symbol
+overlays/ov189 0x021adc95 remove_symbol
+overlays/ov189 0x021adcb5 remove_symbol
+overlays/ov189 0x021adcd5 remove_symbol
+overlays/ov189 0x021add19 remove_symbol
+overlays/ov189 0x021add5d remove_symbol
+overlays/ov189 0x021adde1 remove_symbol
+overlays/ov189 0x021aded9 remove_symbol
+overlays/ov189 0x021adf1d remove_symbol
+overlays/ov189 0x021adf61 remove_symbol
+overlays/ov189 0x021adfa5 remove_symbol
+overlays/ov189 0x021adfe1 remove_symbol
+overlays/ov189 0x021ae02d remove_symbol
+overlays/ov189 0x021ae03c remove_symbol
+overlays/ov189 0x021ae075 remove_symbol
 overlays/ov189 0x021ae0cc section_start lib/dwc/src/nd/nd.c:.data
 overlays/ov189 0x021ae301 remove_symbol
 overlays/ov189 0x021ae335 remove_symbol
@@ -2976,6 +3006,64 @@ overlays/ov189 0x021ae45d remove_symbol
 overlays/ov189 0x021ae499 remove_symbol
 overlays/ov189 0x021ae4c9 remove_symbol
 overlays/ov189 0x021ae4f5 remove_symbol
+overlays/ov189 0x021ae711 remove_symbol
+overlays/ov189 0x021ae72d remove_symbol
+overlays/ov189 0x021ae79d remove_symbol
+overlays/ov189 0x021ae7bd remove_symbol
+overlays/ov189 0x021ae7d5 remove_symbol
+overlays/ov189 0x021ae7ed remove_symbol
+overlays/ov189 0x021ae85d remove_symbol
+overlays/ov189 0x021ae8c9 remove_symbol
+overlays/ov189 0x021ae905 remove_symbol
+overlays/ov189 0x021ae92d remove_symbol
+overlays/ov189 0x021ae959 remove_symbol
+overlays/ov189 0x021aea41 remove_symbol
+overlays/ov189 0x021aea8d remove_symbol
+overlays/ov189 0x021aedf5 remove_symbol
+overlays/ov189 0x021aee6d remove_symbol
+overlays/ov189 0x021aeedd remove_symbol
+overlays/ov189 0x021aef61 remove_symbol
+overlays/ov189 0x021aefc9 remove_symbol
+overlays/ov189 0x021af0b1 remove_symbol
+overlays/ov189 0x021af105 remove_symbol
+overlays/ov189 0x021af341 remove_symbol
+overlays/ov189 0x021af371 remove_symbol
+overlays/ov189 0x021af3b1 remove_symbol
+overlays/ov189 0x021af435 remove_symbol
+overlays/ov189 0x021af4e5 remove_symbol
+overlays/ov189 0x021af531 remove_symbol
+overlays/ov189 0x021af585 remove_symbol
+overlays/ov189 0x021af5d5 remove_symbol
+overlays/ov189 0x021af659 remove_symbol
+overlays/ov189 0x021af709 remove_symbol
+overlays/ov189 0x021af821 remove_symbol
+overlays/ov189 0x021af865 remove_symbol
+overlays/ov189 0x021af8b5 remove_symbol
+overlays/ov189 0x021af8fd remove_symbol
+overlays/ov189 0x021af94d remove_symbol
+overlays/ov189 0x021af9dd remove_symbol
+overlays/ov189 0x021afcd5 remove_symbol
+overlays/ov189 0x021afcfd remove_symbol
+overlays/ov189 0x021afd9d remove_symbol
+overlays/ov189 0x021afe05 remove_symbol
+overlays/ov189 0x021afe21 remove_symbol
+overlays/ov189 0x021afe91 remove_symbol
+overlays/ov189 0x021aff01 remove_symbol
+overlays/ov189 0x021aff95 remove_symbol
+overlays/ov189 0x021b0001 remove_symbol
+overlays/ov189 0x021b001c remove_symbol
+overlays/ov189 0x021b0045 remove_symbol
+overlays/ov189 0x021b00f5 remove_symbol
+overlays/ov189 0x021b018d remove_symbol
+overlays/ov189 0x021b01e1 remove_symbol
+overlays/ov189 0x021b0205 remove_symbol
+overlays/ov189 0x021b0219 remove_symbol
+overlays/ov189 0x021b0403 remove_symbol
+overlays/ov189 0x021b0501 remove_symbol
+overlays/ov189 0x021b0681 remove_symbol
+overlays/ov189 0x021b0905 remove_symbol
+overlays/ov189 0x021b0d03 remove_symbol
+overlays/ov189 0x021b26bc remove_symbol
 overlays/ov189 0x021b2840 add_data data_ov189_021b2840
 overlays/ov189 0x021b2840 remove_symbol
 overlays/ov189 0x021b2850 add_data data_ov189_021b2850
@@ -4682,6 +4770,10 @@ overlays/ov322 0x021a0720 remove_reloc
 overlays/ov322 0x021a0910 remove_symbol
 overlays/ov322 0x021a094d remove_symbol
 overlays/ov323 0x0219e2ec reloc_module overlay(139)
+overlays/ov323 0x0219e990 remove_symbol
+overlays/ov323 0x0219ed2c remove_symbol
+overlays/ov323 0x0219ed40 remove_symbol
+overlays/ov323 0x0219ee40 remove_symbol
 overlays/ov324 0x0219cedc overlay_id 168
 overlays/ov324 0x0219d430 overlay_id 168
 overlays/ov324 0x0219e0d4 reloc_addend 4

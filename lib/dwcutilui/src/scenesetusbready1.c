@@ -100,7 +100,7 @@ static void procInit1(void) {
 }
 
 static void procInit2(void) {
-    if (DWCi_BTNlGet() != -2) {
+    if (DWCi_BTNlGet() != DWC_UTIL_BUTTON_HIDDEN) {
         DWCi_BTNlEnable();
         DWCi_ChangeScene(procScene);
     }
@@ -115,9 +115,9 @@ static void procScene(void) {
 // B, or closing the lid, presses the button that cancels
 static void input(void) {
     if (DWCi_IPTlCheckTrigger(2)) {
-        DWCi_BTNlSet(0);
+        DWCi_BTNlSet(DWC_UTIL_BUTTON_CANCEL);
     } else if (DWCi_IsFold()) {
-        DWCi_BTNlSet(0);
+        DWCi_BTNlSet(DWC_UTIL_BUTTON_CANCEL);
     }
 }
 
@@ -125,7 +125,7 @@ static void draw(void) {
 }
 
 static void button(void) {
-    if (sUsbSetupState == USB_SETUP_RUNNING && DWCi_BTNlGet() == 0) {
+    if (sUsbSetupState == USB_SETUP_RUNNING && DWCi_BTNlGet() == DWC_UTIL_BUTTON_CANCEL) {
         sUsbSetupState = USB_SETUP_CANCEL;
         DWCi_SNDlStop();
         DWCi_SNDlPlay(7);
@@ -210,7 +210,7 @@ static void cbUsb(int result) {
 }
 
 static void procNotFound(void) {
-    if (DWCi_WINlGet() == 0) {
+    if (DWCi_WINlGet() == DWC_UTIL_DIALOG_BUTTON_FIRST) {
         DWCi_SNDlPlay(6);
         DWCi_WINlEnd();
         DWCi_ChangeScene(procNotFound1);
@@ -226,11 +226,11 @@ static void procNotFound1(void) {
 // The dialog of several connectors: the first button ends the setup, the second searches again
 static void procBoth(void) {
     switch (DWCi_WINlGet()) {
-    case 1:
+    case DWC_UTIL_DIALOG_BUTTON_SECOND:
         sUsbSetupState = USB_SETUP_RETRY;
         DWCi_SNDlPlay(6);
         break;
-    case 0:
+    case DWC_UTIL_DIALOG_BUTTON_FIRST:
         sUsbSetupState = USB_SETUP_DONE;
         DWCi_SNDlPlay(7);
         break;

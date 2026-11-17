@@ -56,7 +56,7 @@ static const u8 sButtonEffects[2] = { 4, 5 };
 static const u8 sButtonCells[2] = { 0x3c, 0x3d };
 static const u8 sKeyPalettes[2] = { 2, 3 };
 static const u8 sArrowCells[2] = { 0x37, 0x38 };
-static const u8 sArrowCodes[3] = { 0x10, 0x11, 0 };
+static const u8 sArrowCodes[3] = { DWC_UTIL_KB10_KEY_LEFT, DWC_UTIL_KB10_KEY_RIGHT, DWC_UTIL_KB10_KEY_NONE };
 static const u16 sArrowSize[2] = { 0x1c, 0x14 };
 static const u16 sButtonSize[2] = { 0x78, 0x12 };
 // The size of a row's text, in tiles
@@ -110,7 +110,7 @@ void DWCi_KB10lInit(void) {
     rect.width = 0x1c;
     rect.height = 0x14;
     sMenu = DWCi_HEAPlAllocEx(sizeof(DWCUtilMenu), 4);
-    sMenu->code = 0x1f;
+    sMenu->code = DWC_UTIL_KB10_KEY_IDLE;
     sMenu->cursorPos = 0;
     sMenu->leftEnabled = TRUE;
     sMenu->digitsEnabled = TRUE;
@@ -290,14 +290,14 @@ static void touchTriger(void) {
     }
 }
 
-static const u8 sButtonCodes[3] = { 0x12, 0x13, 0 };
+static const u8 sButtonCodes[3] = { DWC_UTIL_KB10_KEY_CANCEL, DWC_UTIL_KB10_KEY_CONFIRM, DWC_UTIL_KB10_KEY_NONE };
 
 // The end of a touch: the key it chooses, if it ends on the key it started on
 static void touchRelease(void) {
     u16 rect[4];
     int i;
 
-    sMenu->code = 0;
+    sMenu->code = DWC_UTIL_KB10_KEY_NONE;
     if (DWCi_TPlCheckRelease(DWCi_R_SCR)) {
         for (i = 0; i < 10; i++) {
             DWCi_Coord2Rect(&sKeyPositions[i], sKeySize, rect);
@@ -372,7 +372,7 @@ static void touch(void) {
                     sMenu->touched = -1;
                     return;
                 }
-                sMenu->code = 0x10;
+                sMenu->code = DWC_UTIL_KB10_KEY_LEFT;
                 sMenu->repeat -= 7;
                 return;
             }
@@ -409,16 +409,16 @@ static void key(void) {
     int key;
 
     if (DWCi_IPTlCheckRepeat(0x20)) {
-        moveFocus(0);
+        moveFocus(DWC_UTIL_DIRECTION_LEFT);
     }
     if (DWCi_IPTlCheckRepeat(0x40)) {
-        moveFocus(1);
+        moveFocus(DWC_UTIL_DIRECTION_UP);
     }
     if (DWCi_IPTlCheckRepeat(0x10)) {
-        moveFocus(2);
+        moveFocus(DWC_UTIL_DIRECTION_RIGHT);
     }
     if (DWCi_IPTlCheckRepeat(0x80)) {
-        moveFocus(3);
+        moveFocus(DWC_UTIL_DIRECTION_DOWN);
     }
     if (DWCi_IPTlCheckTrigger(1)) {
         key = sMenu->cursorPos;
@@ -447,7 +447,7 @@ static void key(void) {
                 sMenu->buzzed = TRUE;
             }
         } else {
-            sMenu->code = 0x10;
+            sMenu->code = DWC_UTIL_KB10_KEY_LEFT;
         }
     } else if (DWCi_IPTlCheckRelease(2)) {
         sMenu->buzzed = FALSE;
@@ -521,7 +521,7 @@ static void moveFocus(int direction) {
     int previous = sMenu->cursorPos;
 
     sMenu->cursorPos = sNavigation[previous][direction];
-    if (sMenu->cursorPos == 13 && (direction == 1 || direction == 3)) {
+    if (sMenu->cursorPos == 13 && (direction == DWC_UTIL_DIRECTION_UP || direction == DWC_UTIL_DIRECTION_DOWN)) {
         sMenu->lastPos = previous;
     } else if (sMenu->cursorPos == -1) {
         if (sMenu->lastPos == 1 || sMenu->lastPos == 10) {
